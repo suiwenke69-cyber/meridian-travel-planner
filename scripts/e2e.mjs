@@ -200,7 +200,7 @@ await step('2–3. Southeast Asia map renders with Singapore marked as origin', 
   await page.waitForSelector('.mm-origin', { timeout: 60_000, state: 'attached' });
   const originName = (await page.locator('.mm-origin__name').first().innerText()).trim();
   const originMeta = (await page.locator('.mm-origin__meta').first().innerText()).trim();
-  check('origin marker present and named', /Singapore/i.test(originName), originName);
+  check('origin marker present and named', /新加坡|Singapore/i.test(originName), originName);
   check('origin labelled as home', /出发地|home/i.test(originMeta), originMeta);
   // Destinations are native vector layers, so they are asserted through the map
   // rather than through DOM pins.
@@ -229,14 +229,18 @@ await step('4–5. Bali selectable; preview appears without leaving the map', as
   await page.locator('[data-testid="destination-item-bali"]').click();
   await page.waitForSelector('[data-testid="destination-preview"]', { timeout: 15_000 });
   const preview = await page.locator('[data-testid="destination-preview"]').innerText();
-  check('preview shows Bali', /Bali/i.test(preview));
+  check('preview shows Bali', /巴厘岛|Bali/i.test(preview));
   check('preview shows the SIN → DPS route', /SIN/.test(preview) && /DPS/.test(preview));
   check('preview states the flight is direct', /直飞|Direct/.test(preview));
   check('preview states approximate flight duration', /2h 35m|2h 55m/.test(preview));
-  check('preview shows a readable ideal stay', /4–7 days/.test(preview), firstMatch(preview, /Ideal stay[\s\S]{0,30}/));
+  check(
+    'preview shows a readable ideal stay',
+    /4–7\s*天|4–7 days/.test(preview),
+    firstMatch(preview, /(建议停留|Ideal stay)[\s\S]{0,30}/),
+  );
   check('preview shows what the destination is good for', /适合|Good for/i.test(preview));
-  check('preview shows Marriott inventory', /Marriott Bonvoy/.test(preview));
-  check('preview shows Hilton inventory', /Hilton Honors/.test(preview));
+  check('preview shows Marriott inventory', /万豪|Marriott/.test(preview));
+  check('preview shows Hilton inventory', /希尔顿|Hilton/.test(preview));
   check('preview shows a human-readable route pair', /SIN → DPS/.test(preview));
   check('map stayed on the page', (await page.locator('.maplibregl-canvas').count()) === 1);
   await page.screenshot({ path: join(ARTIFACTS, '02-preview.png') });
@@ -283,18 +287,36 @@ await step('7. Every named travel area is present and labelled on the map', asyn
     const feats = m.querySourceFeatures('area-centres');
     return feats.map((f) => f.properties.name);
   });
-  const required = ['Canggu', 'Seminyak', 'Ubud', 'Uluwatu', 'Nusa Dua', 'Sanur'];
+  /*
+   * Labels are localized, so each headline area is checked against BOTH its
+   * Chinese and its canonical name. Asserting on the English alone would fail
+   * the moment the product language changed — which is exactly what happened.
+   */
+  const required = [
+    { zh: '长谷', en: 'canggu' },
+    { zh: '水明漾', en: 'seminyak' },
+    { zh: '乌布', en: 'ubud' },
+    { zh: '乌鲁瓦图', en: 'uluwatu' },
+    { zh: '努沙杜瓦', en: 'nusa dua' },
+    { zh: '沙努尔', en: 'sanur' },
+  ];
   const normalised = (labelled ?? []).map((n) => String(n).toLowerCase());
-  const missing = required.filter((name) => !normalised.some((n) => n.includes(name.toLowerCase().split(' ')[0])));
-  check('all six headline areas exist as map labels', missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : required.join(', '));
+  const missing = required.filter(
+    (area) => !normalised.some((n) => n.includes(area.zh) || n.includes(area.en)),
+  );
+  check(
+    'all six headline areas exist as map labels',
+    missing.length === 0,
+    missing.length ? `missing: ${missing.map((m) => m.zh).join(', ')}` : required.map((a) => a.zh).join(' '),
+  );
 
   const visible = await page.evaluate(() => {
     const m = window.__mmMap;
     const rendered = m.queryRenderedFeatures({ layers: ['area-label'] });
     return rendered.map((f) => String(f.properties.name).toLowerCase());
   });
-  const shown = required.filter((name) => visible.some((n) => n.includes(name.toLowerCase().split(' ')[0])));
-  check('at least five of the six are actually drawn at island scale', shown.length >= 5, shown.join(', '));
+  const shown = required.filter((area) => visible.some((n) => n.includes(area.zh) || n.includes(area.en)));
+  check('at least five of the six are actually drawn at island scale', shown.length >= 5, shown.map((a) => a.zh).join(' '));
 });
 
 await step('8. Area cards carry photography and structured metadata', async () => {
@@ -418,7 +440,7 @@ await step('13. Starting a trip is deliberately three fields', async () => {
   await page.locator('[data-testid="departure-date"]').fill('2026-11-23');
   await page.waitForTimeout(400);
   const cta = await page.locator('[data-testid="create-trip"]').innerText();
-  check('the call to action states the trip length', /5 days/.test(cta), cta);
+  check('the call to action states the trip length', /5\s*天|5 days/.test(cta), cta);
   await page.locator('[data-testid="create-trip"]').click();
   await page.waitForSelector('[data-testid="day-tab-5"]', { timeout: 15_000 });
   check('five days are generated', (await page.locator('[data-testid^="day-tab-"]').count()) === 5);
@@ -607,7 +629,9 @@ await step('18c. Mobile keeps the map and the photography usable', async () => {
   await mobile.waitForTimeout(6000);
 
   const mapBox = await mobile.locator('.maplibregl-canvas').boundingBox();
-  const sheetBox = await mobile.locator('section[aria-label="Destination explorer"]').boundingBox();
+  // The sheet's aria-label is localized, so it is addressed by testid: a
+  // selector tied to an English string breaks the moment the language changes.
+  const sheetBox = await mobile.locator('[data-testid="mobile-sheet"]').boundingBox();
   check('the map still occupies the top of the screen', Boolean(mapBox && mapBox.height > 300), mapBox ? `${Math.round(mapBox.height)}px` : 'missing');
   check('the sheet does not consume the whole viewport', Boolean(sheetBox && sheetBox.y > 250), sheetBox ? `sheet starts at ${Math.round(sheetBox.y)}` : 'missing');
 

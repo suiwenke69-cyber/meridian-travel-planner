@@ -4,7 +4,7 @@ import type { Place } from '@/lib/types';
 import { heroImage } from '@/lib/images';
 import { LAYER_BY_ID } from '@/lib/layers';
 import { isLocatable } from '@/lib/data';
-import { cuisineLabel, recommendedForLabel } from '@/lib/data/place-taxonomy';
+import { activityKindLabel, cuisineLabel, recommendedForLabel } from '@/lib/data/place-taxonomy';
 import { useT, useName, useLocale } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
 import { pick, pickList } from '@/lib/i18n';
@@ -117,7 +117,7 @@ export function PlaceCard({
             <span className="mx-1.5 text-line-strong" aria-hidden="true">
               ·
             </span>
-            {subcategoryLabel(place, t)}
+            {subcategoryLabel(place, t, locale)}
           </p>
 
           {/* Restaurant-specific, and only what we actually hold */}
@@ -201,8 +201,24 @@ export function PlaceCard({
   );
 }
 
-/** Subcategory as a message key, falling back to the authored English string. */
-function subcategoryLabel(place: Place, t: ReturnType<typeof useT>): string {
+/**
+ * The one-line type descriptor under the name.
+ *
+ * Derived from the structured fields rather than from `subcategory`, because the
+ * data holds around seventy distinct subcategory strings ("Cliff-top Spanish
+ * beach club", "Balinese restaurant and cooking school") and translating each is
+ * a maintenance liability that reads worse than a clean taxonomy. Cuisine plus
+ * meal, or activity kind, says the same thing in words the rest of the interface
+ * already uses — and it stays correct when a new venue is added.
+ */
+function subcategoryLabel(place: Place, t: ReturnType<typeof useT>, locale: ReturnType<typeof useLocale>): string {
+  if (place.activity) return activityKindLabel(place.activity.kind, locale);
+  if (place.dining) {
+    const parts: string[] = [];
+    if (place.dining.cuisines[0]) parts.push(cuisineLabel(place.dining.cuisines[0], locale));
+    if (place.dining.mealTypes[0]) parts.push(t(`meal.${place.dining.mealTypes[0]}` as MessageKey));
+    if (parts.length > 0) return parts.join(' · ');
+  }
   const slug = place.subcategory.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   const key = `subcategory.${slug}` as MessageKey;
   const value = t(key);

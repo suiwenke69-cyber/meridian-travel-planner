@@ -14,6 +14,7 @@ import { heroImage } from '@/lib/images';
 import { cn } from '@/lib/utils';
 import { useT, useName, useLocale } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
+import { pick } from '@/lib/i18n';
 import { ImageFrame } from '../../ui/ImageFrame';
 import { TransportLegRow } from '../TransportLegRow';
 import { TripSetupForm } from '../../planner/TripSetupForm';
@@ -347,14 +348,14 @@ function DayTimeline({
                       selectItem(item.id);
                       requestFocus(item.lat, item.lng, 14);
                     }}
-                    aria-label={`Show ${item.name} on the map`}
+                    aria-label={t('label.showOnMap')}
                   >
                     <ImageFrame
                       image={meta?.image}
                       variant="thumb"
                       className="w-12 rounded-md"
                       showDisclosure={false}
-                      fallbackLabel={item.name}
+                      fallbackLabel={pick(item.nameZh, item.name, locale)}
                     />
                   </button>
 
@@ -368,7 +369,7 @@ function DayTimeline({
                       }}
                     >
                       <span className="block text-[13.5px] font-semibold leading-snug tracking-[-0.005em] text-ink">
-                        {item.name}
+                        {pick(item.nameZh, item.name, locale)}
                       </span>
                       <span className="mt-0.5 block text-[11.5px] text-muted">{meta?.subtitle || item.kind}</span>
                     </button>

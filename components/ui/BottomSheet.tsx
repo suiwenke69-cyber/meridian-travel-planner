@@ -92,6 +92,7 @@ export function BottomSheet({
 
   return (
     <section
+      data-testid="mobile-sheet"
       ref={sheetRef}
       aria-label={ariaLabel}
       className={cn(
@@ -116,7 +117,7 @@ export function BottomSheet({
           type="button"
           onClick={cycle}
           className="mt-1 flex w-full items-center justify-between gap-3 px-3 pb-1.5 pt-0.5 text-left"
-          aria-label={`Planner panel, ${snap}. Activate to change height.`}
+          aria-label={ariaLabel}
         >
           <span className="min-w-0 flex-1">{header}</span>
           <span className="shrink-0 text-muted">

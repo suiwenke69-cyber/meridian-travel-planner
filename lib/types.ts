@@ -644,6 +644,15 @@ export interface ItineraryItem {
   refId: string;
   kind: ItineraryItemKind;
   name: string;
+  /**
+   * Chinese name, carried on the item rather than looked up at render time.
+   *
+   * A trip survives in localStorage across releases, and the entity it points at
+   * can be renamed or removed. Storing both names means an itinerary written in
+   * one language still reads correctly after the traveller switches, and still
+   * reads correctly if the place record disappears.
+   */
+  nameZh?: string;
   areaId?: string;
   areaName?: string;
   lat: number;

@@ -92,6 +92,7 @@ export function itemFromHotel(hotel: Hotel): ItineraryItem {
     refId: hotel.id,
     kind: hotel.hotelGroup === 'marriott' ? 'marriott' : 'hilton',
     name: hotel.name,
+    nameZh: hotel.nameZh,
     areaId: hotel.areaId,
     lat: hotel.coordinates.lat,
     lng: hotel.coordinates.lng,
@@ -106,6 +107,7 @@ export function itemFromPlace(place: Place): ItineraryItem {
     refId: place.id,
     kind: place.markerLayer,
     name: place.name,
+    nameZh: place.nameZh,
     areaId: place.areaId,
     lat: place.coordinates.lat,
     lng: place.coordinates.lng,
@@ -120,7 +122,10 @@ export function itemFromAirport(airport: Airport, kind: 'arrival' | 'departure')
     id: makeId('item'),
     refId: airport.id,
     kind: 'airport',
-    name: `${airport.code} · ${kind === 'arrival' ? 'Arrival' : 'Departure'} — ${airport.name}`,
+    // The code is the searchable part; the word around it is chrome, and the
+    // timeline resolves that through the catalogue rather than storing English.
+    name: `${airport.code} — ${airport.name}`,
+    nameZh: `${airport.code} — ${airport.name}`,
     lat: airport.coordinates.lat,
     lng: airport.coordinates.lng,
     durationMin: kind === 'arrival' ? 60 : 120,
