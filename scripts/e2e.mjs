@@ -69,6 +69,23 @@ async function until(page, fn, { timeout = 8000, interval = 250 } = {}) {
  */
 const SLOW_STEP_MS = 120_000;
 
+/**
+ * Selects an origin, opening the popover only if it is closed.
+ *
+ * The trigger is a TOGGLE, so a naive click is only correct if the panel happens
+ * to be shut. The first version of this suite left the panel open at the end of
+ * one step and the next step's click closed it again, after which every option
+ * lookup timed out — a test bug that looked exactly like a product bug.
+ */
+async function chooseOrigin(page, id) {
+  const panel = page.locator('[data-testid="origin-trigger-panel"]');
+  if (!(await panel.isVisible())) {
+    await page.locator('[data-testid="origin-trigger"]').first().click();
+    await page.waitForTimeout(500);
+  }
+  await page.locator(`[data-testid="origin-trigger-option-${id}"]`).click();
+}
+
 async function step(name, fn) {
   console.log(`\n▶ ${name}`);
   const started = Date.now();
@@ -232,7 +249,12 @@ await step('4–5. Bali selectable; preview appears without leaving the map', as
   check('preview shows Bali', /巴厘岛|Bali/i.test(preview));
   check('preview shows the SIN → DPS route', /SIN/.test(preview) && /DPS/.test(preview));
   check('preview states the flight is direct', /直飞|Direct/.test(preview));
-  check('preview states approximate flight duration', /2h 35m|2h 55m/.test(preview));
+  // The duration is now origin-relative and phrased as 约 2 小时 45 分钟 从新加坡出发.
+  check(
+    'preview states an approximate flight duration',
+    /约\s*\d+\s*小时/.test(preview) || /≈\s*\d+\s*(h|小时)/.test(preview),
+    firstMatch(preview, /约[^\n]{0,24}/),
+  );
   check(
     'preview shows a readable ideal stay',
     /4–7\s*天|4–7 days/.test(preview),
@@ -241,7 +263,8 @@ await step('4–5. Bali selectable; preview appears without leaving the map', as
   check('preview shows what the destination is good for', /适合|Good for/i.test(preview));
   check('preview shows Marriott inventory', /万豪|Marriott/.test(preview));
   check('preview shows Hilton inventory', /希尔顿|Hilton/.test(preview));
-  check('preview shows a human-readable route pair', /SIN → DPS/.test(preview));
+  // The pair is origin-side airports → destination airports: "SIN · XSP → DPS".
+  check('preview shows a human-readable route pair', /SIN[^→\n]*→[^\n]*DPS/.test(preview), firstMatch(preview, /[A-Z]{3}[^\n]{0,30}DPS/));
   check('map stayed on the page', (await page.locator('.maplibregl-canvas').count()) === 1);
   await page.screenshot({ path: join(ARTIFACTS, '02-preview.png') });
 });
@@ -858,6 +881,186 @@ await step('23. An accepted mention reaches the traveller as an aggregate signal
     check('it carries a provenance caveat', /不代表全网热度|只作为参考/.test(text));
   }
   await page.screenshot({ path: join(ARTIFACTS, '24-zh-social-signal.png') });
+});
+
+
+// ---------------------------------------------------------------------------
+// This iteration: the origin became a first-class entity.
+// ---------------------------------------------------------------------------
+
+await step('24. The homepage opens on a default origin, with the origin as a control', async () => {
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(9000);
+
+  const trigger = page.locator('[data-testid="origin-trigger"]').first();
+  check('an origin control is present in the header', (await trigger.count()) === 1);
+  const city = await page.locator('[data-testid="origin-trigger-city"]').first().innerText();
+  const codes = await page.locator('[data-testid="origin-trigger-codes"]').first().innerText();
+  check('it defaults to the intended origin', city.trim() === '新加坡', city);
+  check('it shows the airport codes', /SIN/.test(codes), codes);
+  // The old fixed "出发地 SIN" text must be gone: origin is now a decision.
+  const body = await page.locator('body').innerText();
+  check('no fixed departure code is printed as static text', !/出发地\s*SIN\b/.test(body));
+  await page.screenshot({ path: join(ARTIFACTS, '30-origin-default.png') });
+});
+
+await step('25. The selector searches by Chinese name, English name and airport code', async () => {
+  await page.locator('[data-testid="origin-trigger"]').first().click();
+  await page.waitForTimeout(900);
+  check('the selector opens', await page.locator('[data-testid="origin-trigger-panel"]').isVisible());
+
+  const groups = await page.locator('[data-testid="origin-trigger-panel"] .label-caps').allInnerTexts();
+  check('origins are grouped by region', groups.length >= 5, groups.join(' / '));
+  check('the groups are Chinese', /新加坡/.test(groups.join(' ')) && /粤港澳大湾区/.test(groups.join(' ')));
+
+  const search = page.locator('[data-testid="origin-trigger-search"]');
+  const optionIds = async () =>
+    (await page.locator('[data-testid^="origin-trigger-option-"]').allInnerTexts()).map((x) => x.split('\n')[0].trim());
+
+  for (const [query, expected] of [
+    ['广州', '广州'],
+    ['Guangzhou', '广州'],
+    ['CAN', '广州'],
+    ['上海', '上海'],
+    ['Shanghai', '上海'],
+    ['BKK', '曼谷'],
+    ['Bangkok', '曼谷'],
+  ]) {
+    await search.fill(query);
+    await page.waitForTimeout(500);
+    const found = await optionIds();
+    check(`search "${query}" resolves`, found.includes(expected), found.join(', ') || 'nothing');
+  }
+
+  await search.fill('zzzz');
+  await page.waitForTimeout(500);
+  check('an unmatched query says so rather than showing nothing', /没有找到/.test(await page.locator('[data-testid="origin-trigger-panel"]').innerText()));
+  await page.screenshot({ path: join(ARTIFACTS, '31-origin-search.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+});
+
+await step('26. Every supported origin can be selected, and the map reorients', async () => {
+  const origins = [
+    ['guangzhou', '广州', 'CAN'],
+    ['shenzhen', '深圳', 'SZX'],
+    ['hong-kong', '香港', 'HKG'],
+    ['shanghai', '上海', 'PVG'],
+    ['hangzhou', '杭州', 'HGH'],
+    ['beijing', '北京', 'PEK'],
+    ['chengdu', '成都', 'CTU'],
+    ['bangkok', '曼谷', 'BKK'],
+    ['kuala-lumpur', '吉隆坡', 'KUL'],
+    ['jakarta', '雅加达', 'CGK'],
+    ['singapore', '新加坡', 'SIN'],
+  ];
+
+  const seen = [];
+  for (const [id, name, code] of origins) {
+    await chooseOrigin(page, id);
+    await page.waitForTimeout(2200);
+    const shown = (await page.locator('[data-testid="origin-trigger-city"]').first().innerText()).trim();
+    const shownCodes = (await page.locator('[data-testid="origin-trigger-codes"]').first().innerText()).trim();
+    seen.push({ id, ok: shown === name && shownCodes.includes(code), shown, shownCodes });
+  }
+  const bad = seen.filter((x) => !x.ok);
+  check(
+    `all ${origins.length} origins select and update the control`,
+    bad.length === 0,
+    bad.length ? bad.map((b) => `${b.id}→${b.shown}/${b.shownCodes}`).join(', ') : origins.map((o) => o[1]).join(' '),
+  );
+
+  // The origin marker must be at the selected origin, and the viewport must
+  // contain it — this is the "map reorients itself" requirement.
+  const view = await page.evaluate(async () => {
+    for (let i = 0; i < 40; i += 1) {
+      const m = window.__mmMap;
+      if (m?.loaded?.()) {
+        const b = m.getBounds();
+        return {
+          hasSingapore: b.contains([103.8198, 1.3521]),
+          hasKualaLumpur: b.contains([101.6869, 3.139]),
+          west: Number(b.getWest().toFixed(1)),
+          south: Number(b.getSouth().toFixed(1)),
+        };
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return null;
+  });
+  check('the viewport covers the selected origin', Boolean(view && view.hasKualaLumpur), JSON.stringify(view));
+  await page.screenshot({ path: join(ARTIFACTS, '32-origin-selected.png') });
+});
+
+await step('27. Destination metadata is origin-relative, and unknown stays unknown', async () => {
+  const readBali = async () => {
+    const row = page.locator('[data-testid="destination-rail"] button', { hasText: '巴厘岛' }).first();
+    await row.waitFor({ timeout: 20_000 });
+    return (await row.innerText()).replace(/\n/g, ' ');
+  };
+  const setOrigin = async (id) => {
+    await chooseOrigin(page, id);
+    await page.waitForTimeout(3000);
+  };
+
+  await setOrigin('singapore');
+  const fromSingapore = await readBali();
+  await setOrigin('guangzhou');
+  const fromGuangzhou = await readBali();
+
+  check('the same destination reports a different journey per origin', fromSingapore !== fromGuangzhou, `${fromSingapore} || ${fromGuangzhou}`);
+  check('Singapore → Bali is the shorter of the two', /2h/.test(fromSingapore) && /5h/.test(fromGuangzhou), `${fromSingapore} | ${fromGuangzhou}`);
+
+  /*
+   * The honesty rule. Jakarta has almost no curated connections, so its rail
+   * must contain 航班信息待确认 — and must not print a duration beside it.
+   */
+  await setOrigin('jakarta');
+  const railText = await page.locator('[data-testid="destination-rail"]').innerText();
+  check('unknown connections are labelled as unknown', /航班信息待确认/.test(railText));
+  const unknownLines = railText.split('\n').filter((_, i, arr) => /航班信息待确认/.test(arr[i]));
+  check('an unknown connection shows no duration', unknownLines.every((line) => !/≈\d/.test(line)), unknownLines.slice(0, 2).join(' | '));
+
+  // And the preview card must expose the same fact structurally.
+  await page.locator('[data-testid="destination-rail"] button', { hasText: '巴拉望' }).first().click();
+  await page.waitForTimeout(2500);
+  const route = page.locator('[data-testid="preview-route"]');
+  check('the preview card carries its origin', (await route.getAttribute('data-origin')) === 'jakarta');
+  check('the preview card marks the confidence', ['unknown', 'approximate', 'verified'].includes(await route.getAttribute('data-confidence')));
+  await page.screenshot({ path: join(ARTIFACTS, '33-origin-relative.png') });
+});
+
+await step('28. The selected origin survives a refresh, and Bali still works', async () => {
+  await chooseOrigin(page, 'shanghai');
+  await page.waitForTimeout(2500);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(8000);
+  const after = (await page.locator('[data-testid="origin-trigger-city"]').first().innerText()).trim();
+  check('the origin survives a refresh', after === '上海', after);
+
+  // Bali must be untouched by all of this.
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(9000);
+  const tabs = (await page.locator('[data-testid^="dest-tab-"]').allInnerTexts()).map((t) => t.trim());
+  check('Bali keeps its four tabs', tabs.join('/') === '探索/住宿/游玩/行程', tabs.join('/'));
+
+  for (const [tab, selector] of [['stay', '[data-testid^="hotel-card-"]'], ['do', '[data-testid^="place-card-"]']]) {
+    await page.locator(`[data-testid="dest-tab-${tab}"]`).click();
+    await page.waitForTimeout(4000);
+    check(`Bali ${tab} still lists content`, (await page.locator(selector).count()) > 0);
+  }
+  await page.locator('[data-testid="dest-tab-plan"]').click();
+  await page.waitForTimeout(3500);
+  check('Bali PLAN still offers to start a trip', (await page.locator('[data-testid="create-trip"], [data-testid^="day-tab-"]').count()) > 0);
+
+  // The destination page knows the origin too.
+  const destOrigin = (await page.locator('[data-testid="origin-trigger-city"]').first().innerText()).trim();
+  check('the destination page carries the selected origin', destOrigin === '上海', destOrigin);
+  await page.screenshot({ path: join(ARTIFACTS, '34-origin-on-destination.png') });
 });
 
 // ---------------------------------------------------------------------------

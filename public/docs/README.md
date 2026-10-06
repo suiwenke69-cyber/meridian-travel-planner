@@ -459,6 +459,46 @@ domain has no such restriction.
 
 ---
 
+## Where you are leaving from
+
+Meridian is **not a Singapore product**. The origin is a first-class entity, and Singapore is
+one of eleven supported departure cities.
+
+| Group | Cities |
+|---|---|
+| 新加坡 | Singapore |
+| 粤港澳大湾区 | Guangzhou, Shenzhen, Hong Kong |
+| 长三角 | Shanghai, Hangzhou |
+| 中国其他 | Beijing, Chengdu |
+| 东南亚 | Bangkok, Kuala Lumpur, Jakarta |
+
+**One city is not one airport.** Shanghai has PVG and SHA, Beijing PEK and PKX, Chengdu CTU and
+TFU, Bangkok BKK and DMK, Singapore SIN and XSP. The model stores a list from the start, and every
+airport coordinate was resolved against OpenStreetMap.
+
+Selecting an origin reorients the product with no destination-specific code: the map marker, the
+viewport, the single route arc, every duration in the destination rail, the 直飞 filter, and the
+destination preview card.
+
+### Unknown is not "no"
+
+`OriginDestinationConnection.directAvailable` is `boolean | null`, and **`null` means we have no
+data**. Those pairs render 航班信息待确认 and show **no duration at all** — only a straight-line
+distance, explicitly labelled as a straight line. Nothing is inferred from distance, from hub size,
+or from the fact that another origin has the route.
+
+Three confidence levels, treated differently in the interface:
+
+- **verified (10)** — Singapore's connections, harvested from the destination data files where each
+  carries a cited source.
+- **approximate (64)** — long-standing routes for those hubs, marked 待确认 with a curation date.
+- **unknown (36)** — no record. Jakarta has two of ten; that is the honest result.
+
+China is an **origin market only**. There are no Chinese destinations, deliberately.
+
+
+---
+
 ## Language
 
 **Simplified Chinese is the primary product language.** English is available and the

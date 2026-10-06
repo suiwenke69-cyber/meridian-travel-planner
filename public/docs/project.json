@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Simplified Chinese is the primary language; Bali is the reference implementation; no live data.",
+  "status": "V1 — working end to end. Multi-city origins, Simplified Chinese primary, Bali the reference destination. No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -88,16 +88,17 @@
     "productionBuild": "passes; 10 destinations pre-rendered"
   },
   "knownLimitations": [
-    "Six Bali places have no verified location — readable but not plannable, and their cards say so",
-    "The 97 new restaurants and activities have no photography yet; their cards render the honest no-photo state",
-    "Social signals are empty on a fresh install by design: they come only from guides the researcher imports",
-    "Extraction is literal — it matches names against the catalogue; it cannot read a screenshot of a Xiaohongshu post",
-    "The pasted text cannot be verified against the URL it is attached to",
-    "The taxonomy is Bali-shaped; another destination will need new cuisine and activity ids",
-    "Sixteen of twenty Bali hotels have no verified property photography — a Commons/Openverse coverage limit",
+    "64 of 110 connections are curated route knowledge, not verified schedules; they are marked 待确认 and carry a curation date",
+    "Nothing refreshes connection data automatically — verifiedAt exists so a review can be built, and has not been",
+    "No nearby-airport logic: nearbyOriginIds is displayed as a hint and nothing acts on it",
+    "No multimodal origin journey — 苏州 → PVG → Bali is supported by the model and not computed",
+    "The origin is not yet on the itinerary timeline, which still starts at the destination airport",
+    "No visa or entry data for any origin, deliberately",
+    "The 97 Bali restaurants and activities still have no photography",
+    "Six Bali places still have no verified location",
     "Traffic is not modelled; measured legs are free-flow estimates",
     "Only Bali is deep; the other nine destinations are architecturally complete but thin",
-    "No backend and no accounts; trips and research live in localStorage on one browser",
+    "No backend and no accounts; trips, research and the origin live in localStorage",
     "No prices anywhere — hotel cost is a positioning tier with its basis displayed"
   ],
   "documents": {
@@ -222,5 +223,49 @@
     "resolved": "94 of 100 new POIs",
     "rejected": "Anything outside Bali, or more than 15 km from the area it claims to be in, is rejected and reported for a human.",
     "unresolved": "Six places are not in OSM. They keep confidence \"demo\" and are excluded from the map and from itineraries; their cards say 位置未核实."
-  }
+  },
+  "origins": {
+    "model": "OriginCity is a first-class entity with a list of airports. One city is not one airport: Shanghai has PVG and SHA, Beijing PEK and PKX, Chengdu CTU and TFU, Bangkok BKK and DMK.",
+    "cities": 11,
+    "airports": 16,
+    "regions": [
+      "singapore",
+      "greater-bay",
+      "yangtze-delta",
+      "china-other",
+      "southeast-asia"
+    ],
+    "list": [
+      "Singapore",
+      "Guangzhou",
+      "Shenzhen",
+      "Hong Kong",
+      "Shanghai",
+      "Hangzhou",
+      "Beijing",
+      "Chengdu",
+      "Bangkok",
+      "Kuala Lumpur",
+      "Jakarta"
+    ],
+    "coordinates": "All 16 airports and every city centre resolved against OpenStreetMap via Nominatim; scripts/verify-origins.mjs re-checks the dataset.",
+    "chinaIsAnOriginMarket": "China is an origin market only. There are no Chinese destinations, deliberately — mixing the two would turn a focused origin upgrade into an unbounded content project.",
+    "persistence": "Its own store (lib/store/origin-store.ts) with its own storage key, because \"I live in Guangzhou\" belongs to a person, not to a trip. Replacing localStorage with a user profile touches one file.",
+    "nearbyAirports": "nearbyOriginIds is populated and surfaced as a hint; nothing acts on it yet. Architecture for 考虑附近机场 without the optimisation."
+  },
+  "connections": {
+    "abstraction": "OriginDestinationConnection. Whether a route is non-stop is a property of an (origin, destination) PAIR, not of the destination airport.",
+    "directAvailable": "boolean | null, and null means UNKNOWN — not \"no\". A pair with no record renders 航班信息待确认 and shows no duration at all.",
+    "verified": 10,
+    "approximate": 64,
+    "unknown": 36,
+    "harvestedFromDestinationData": "Singapore's connections are extracted at load from the destination files, keeping the cited sources (airline timetables, news reports, checked block times) attached to the data they describe.",
+    "weekendSuitability": "Curated per pair, never derived from distance. Singapore → Bali is not-ideal; Bangkok → Siem Reap is good.",
+    "refresh": "Every record carries source and verifiedAt so it can be re-checked. Nothing refreshes automatically yet."
+  },
+  "tripModel": {
+    "originCityId": "Trips store where they depart from.",
+    "migration": "A zustand version-1 migration stamps singapore on trips saved before origins existed, plus a hydrate backstop for payloads with no version field. Days, items and dates are untouched."
+  },
+  "localizedArrays": "bestFor, weakFor and tags carry positionally-aligned Chinese variants. The validator checks alignment, because pickList falls back per index and a mismatch degrades into a half-Chinese line that reads as a bug."
 }

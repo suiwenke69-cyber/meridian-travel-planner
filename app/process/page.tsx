@@ -56,6 +56,36 @@ const SCREENSHOTS: Array<{ file: string; title: string; body: string }> = [
     body: 'Category markers carry a shape, a glyph and a label — never colour alone. Marriott is a rounded square with an M, Hilton a circle with an H. Clusters are styled to belong to the map.',
   },
   {
+    file: '40-origin-singapore.jpg',
+    title: '出发地是一个实体，不再写死新加坡',
+    body: '新加坡只是十一个可选出发城市之一。首页顶栏原来写死"出发地 SIN"，现在它是一个控件：从 新加坡 SIN · XSP ▾。选一个城市，地图、视野、航线、每个时长、直飞筛选和目的地卡片全部跟着变，没有任何一处是为某个目的地写死的代码。',
+  },
+  {
+    file: '41-origin-selector.jpg',
+    title: '十一个城市，五个分组',
+    body: '新加坡 / 粤港澳大湾区 / 长三角 / 中国其他 / 东南亚。一个城市不等于一个机场：上海有 PVG 和 SHA，北京有 PEK 和 PKX，成都有 CTU 和 TFU，曼谷有 BKK 和 DMK。模型从一开始就存的是一个列表，所以给一个城市加第二个机场是改数据，不是改结构。',
+  },
+  {
+    file: '42-origin-search.jpg',
+    title: '搜中文、英文、机场代码都行',
+    body: '广州、Guangzhou、CAN 指向同一个地方——这三种写法取决于用户眼前是什么。搜机场代码也会匹配机场中文名，所以 SH A 会同时给出上海和杭州（虹桥、萧山），这是对的：输代码的人要找的就是机场。',
+  },
+  {
+    file: '43-origin-guangzhou.jpg',
+    title: '换成广州，整个产品跟着转',
+    body: '出发地星标移到广州，视野重新框选，目的地列表里每个时长都变了：巴厘岛从约 2 小时 45 分变成约 5 小时 25 分。直飞筛选现在指的是"从你所在的城市直飞"。长滩岛和巴拉望显示"航班信息待确认"——因为我们确实没有这两条航线的可靠数据。',
+  },
+  {
+    file: '44-origin-route-shanghai.jpg',
+    title: '一条连线，从你出发的地方开始',
+    body: '上海 → 巴厘岛：约 6 小时 25 分钟 · 直飞 · PVG · SHA → DPS · 待确认。这条曲线只是地理关系示意，不是航路。同一张卡上有数据来源和整理日期——连接数据不能变成没有出处的永久事实。',
+  },
+  {
+    file: '45-origin-unknown.jpg',
+    title: '不知道就说不知道',
+    body: '雅加达出发，十条航线里我们只整理了三条，其余七条显示"航班信息待确认"，并且不显示任何时长——只给一个明确标注为直线的距离（直线距离 2,815 公里）。这个字段在类型上是 boolean | null，null 表示未知，不等于"没有直飞"。',
+  },
+  {
     file: '31-zh-home.jpg',
     title: '中文是主语言',
     body: '产品语言是简体中文。这一页的每一个字都来自 lib/i18n 的 546 条词条——zhCN 先写，en 按它的键集做类型约束，所以漏翻一个键是编译错误，而不是界面上冒出一串 key。地名双语并列：读的是"巴厘岛"，搜索时用的是 Bali。',

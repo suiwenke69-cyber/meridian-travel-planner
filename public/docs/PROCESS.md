@@ -775,3 +775,198 @@ requests. Four steps are new this pass:
    because that is what people actually write.
 8. **Traffic is still not modelled**, photography is still Wikimedia-grade, and only Bali is deep —
    all unchanged from the previous pass.
+
+---
+
+# Iteration 5 — the origin becomes a first-class entity
+
+The brief was narrow: stop assuming Singapore. Everything else about the product — the map, the
+Bali EXPLORE/STAY/DO/PLAN experience, the research pipeline — was to stay exactly as it was. What
+changed is the *other* end of the journey.
+
+## 1. What "Singapore-centric" actually meant in the code
+
+Finding every place the assumption lived was the first job, and it was more than a label:
+
+| Where | The assumption |
+|---|---|
+| `lib/data/regions.ts` | `SINGAPORE_ORIGIN`, a single hard-coded city typed `id: 'singapore'` |
+| `Airport.directFromSingapore` | Whether a route was non-stop — stored on the *destination* airport |
+| `Airport.flightMinutes` / `airlines` / `flightNote` | Duration and carriers, also on the destination airport |
+| `primaryRouteSummary()` | Read those fields and formatted "…non-stop" |
+| `hasDirectFromSingapore()` | The 直飞 filter |
+| `RegionMapView` | Viewport bounds built from `SINGAPORE_ORIGIN.coordinates`, origin marker pinned there |
+| `RegionArcLayer` | The arc started at Singapore unconditionally |
+| `EntityDetailCard` | Told a traveller from Guangzhou about Singapore's non-stop service |
+| `map-markers.ts` | Airport sublabel read "non-stop from SIN" |
+| `Trip` | No origin field at all |
+| i18n | `从新加坡出发`, `Places within a four-hour flight of Singapore` |
+
+Two of those are the interesting ones. **Direct service is a property of a PAIR, not of the
+destination airport.** Singapore → Bali and Shanghai → Bali are different journeys to the same
+island, and a boolean on Bali's airport record could only ever describe one of them. That is why
+the fix is an `OriginDestinationConnection` and not a second boolean.
+
+## 2. The origin dataset
+
+Eleven cities in five groups, because that is what a selector needs:
+
+| Group | Cities |
+|---|---|
+| 新加坡 | Singapore |
+| 粤港澳大湾区 | Guangzhou, Shenzhen, Hong Kong |
+| 长三角 | Shanghai, Hangzhou |
+| 中国其他 | Beijing, Chengdu |
+| 东南亚 | Bangkok, Kuala Lumpur, Jakarta |
+
+**One city is not one airport.** Shanghai has PVG and SHA, Beijing PEK and PKX, Chengdu CTU and
+TFU, Bangkok BKK and DMK, Singapore SIN and XSP. The model stores a list from the start, so adding
+the second airport to a city is a data edit rather than a schema change — and the one-city-one-airport
+version would have had to be rewritten the moment Hangzhou gained a second field.
+
+All **16 airports** and every city centre were resolved against OpenStreetMap via Nominatim, and
+each coordinate carries the aerodrome it marks. The verification script is kept
+(`scripts/verify-origins.mjs`) so the dataset can be re-checked rather than trusted.
+
+**China is an origin market, not a destination catalogue.** There are no Chinese destinations, and
+none were added. Mixing the two would have turned a focused origin upgrade into an unbounded
+content project.
+
+## 3. Connections, and the rule that makes them honest
+
+`directAvailable` is `boolean | null`. **`null` means unknown, and unknown is not "no".** A pair
+with no record renders 航班信息待确认 and shows **no duration at all** — only a straight-line
+distance, explicitly labelled as a straight line. Nothing is inferred from distance, from hub size,
+or from the fact that some other origin has the route.
+
+Three confidence levels, and the interface treats them differently:
+
+- **verified (10)** — Singapore's connections, *harvested* from the destination data files where
+  each carries a cited source: airline timetables, news reports, block times checked flight by
+  flight. The harvest runs once at module load and is the only reader of the old fields, which are
+  renamed `legacyRouteFromOrigin` and marked deprecated. The cited sources stay attached to the
+  data they describe.
+- **approximate (64)** — the long-standing, high-frequency routes that appear on any route map for
+  those hubs. Marked 待确认 in the interface, with the curation date and a source string saying so.
+- **unknown (36)** — no record. Jakarta has two of ten; that is the honest result, not a failure.
+
+The alternative — marking all ten non-Singapore origins unknown — would have demonstrated the
+architecture while telling a traveller nothing. Marking them all verified would have been a lie.
+
+`weekendSuitability` is curated per pair rather than derived from distance. Singapore → Bali is
+`not-ideal`; Bangkok → Siem Reap is `good`. The brief was explicit that this must not be computed
+from a straight line, and it is not.
+
+## 4. The selector
+
+Compact, Chinese-first, map-first. A pill in the header reading `从 广州 CAN ▾` that opens a
+320 px popover: a search field, cities grouped by region, nothing else. Choosing a city closes the
+popover and reorients the map immediately — there is no confirm step, because the whole point of
+the control is that changing origin is cheap.
+
+Search resolves **广州, Guangzhou and CAN** — the three ways a person refers to the same place
+depending on what is in front of them. It also matches airport *names*, which is why `SHA` returns
+both 上海 and 杭州: Hongqiao's Chinese name is 虹桥 and Xiaoshan's is 萧山, and both contain the
+letters. That is a feature; a traveller typing an airport code wants the airport.
+
+It appears in three places: the homepage top bar, the mobile destination rail, and the destination
+page. On mobile the top-bar copy is hidden and the rail copy takes over — changing where you are
+leaving from is the first decision in the product, not a secondary action.
+
+## 5. What reorients
+
+Selecting 广州 changes, with no destination-specific code:
+
+- the origin marker (★ 广州 / 出发地),
+- the viewport, refit to contain the new origin *and* the destinations,
+- the single route arc, now drawn from Guangzhou,
+- every duration in the destination rail (Bali 2h45m → 5h25m),
+- the 直飞 filter, which now means non-stop *from your city*,
+- the preview card: 约 6 小时 25 分钟 从上海出发 · 直飞 · PVG · SHA → DPS · 待确认,
+- the airport card inside a destination.
+
+A destination with no connection record stays visible under 全部 but is excluded from 直飞 — we
+cannot claim non-stop service we have no data for.
+
+## 6. Persistence and migration
+
+The origin lives in its own store (`lib/store/origin-store.ts`) with its own storage key. That is
+deliberate: **"I live in Guangzhou" belongs to a person, not to a trip or a screen.** When accounts
+arrive, this file is replaced by a profile read and nothing else changes. Hydration re-validates
+the stored id, so a city removed from the dataset cannot leave the map without an origin.
+
+`Trip.originCityId` is optional on the type, because trips saved before this iteration do not have
+it. Two layers handle that:
+
+1. a **zustand `version: 1` migration** that stamps `singapore` on any trip without an origin —
+   which is where every such trip was in fact made from;
+2. a **hydrate backstop** that catches anything the migration missed, because zustand only runs
+   `migrate` when the stored version is *older*, and a payload written before versioning existed has
+   no version field at all.
+
+Nothing else about a trip changes: days, items and dates are untouched, and a trip that already has
+an origin keeps it. An empty origin would otherwise render 出发地 — on an itinerary that is
+perfectly readable.
+
+## 7. Bugs this pass surfaced
+
+1. **The selector panel opened off-screen.** The trigger sits at the top right, the panel was
+   anchored `left-0`, and it ran past the viewport edge. It now hangs from the right.
+2. **Two elements shared one test id.** The header and mobile-rail selectors are both in the DOM at
+   every viewport (one is CSS-hidden), so `origin-trigger` resolved to two nodes and every strict
+   locator failed. The mobile instance is now `origin-trigger-mobile`, with its inner elements
+   prefixed to match.
+3. **A `{count}` placeholder rendered literally.** The preview card called `t('region.placesMapped')`
+   without params, so the card read "145 已收录 {count} 个地点". Added because the Chinese catalogue
+   introduced placeholders the English call sites never passed.
+4. **`bestForZh` arrays were the wrong length on seven destinations.** `pickList` falls back
+   per index, so a mismatch degrades into a line that is half Chinese and half English — it reads as
+   a bug and nothing catches it. The validator now checks alignment for `bestFor`, `weakFor` and
+   `tags` across every destination, area and place.
+5. **A circular import broke every page.** `connections.ts` imported `DESTINATIONS` from
+   `lib/data/index.ts`, which re-exports `getConnection` from `connections.ts` — and the connection
+   table was built at module scope. Every import failed with *"Cannot access 'DESTINATIONS' before
+   initialization"*. The table is now built lazily on first use.
+
+## 8. Verification
+
+**104 of 104 checks pass** across 29 steps, with 0 console errors, 0 page errors and 0 failed
+requests. Five steps are new:
+
+- **The homepage opens on a default origin, with the origin as a control** — and asserts that the
+  old fixed `出发地 SIN` static text is gone.
+- **The selector searches by Chinese name, English name and airport code** — seven queries,
+  including that an unmatched query says so rather than rendering an empty panel.
+- **Every supported origin can be selected and the map reorients** — all eleven, plus a viewport
+  assertion that the bounds actually contain the selected origin.
+- **Destination metadata is origin-relative, and unknown stays unknown** — Singapore → Bali must be
+  shorter than Guangzhou → Bali, and Jakarta's rail must contain 航班信息待确认 with **no duration
+  beside it**.
+- **The selected origin survives a refresh, and Bali still works** — all four tabs, hotels, places,
+  the trip form, and the origin carried onto the destination page.
+
+`npm run validate:data` gained four rule groups: origin and airport integrity (including that an
+airport code cannot belong to two cities), connection provenance, that an `unknown` connection
+carries no numbers, that a `verified` one carries a duration, and bilingual array alignment.
+
+Dataset after this pass: **11 origin cities · 16 airports · 10 verified + 64 approximate + 36
+unknown connections · 581 message keys.**
+
+## Known limitations after this pass
+
+1. **64 of 110 connections are curated, not verified.** They are marked 待确认 in the interface and
+   carry a curation date, but they are route knowledge, not a schedule anyone checked. The
+   architecture is built for a provider to replace them; nobody has yet.
+2. **Nothing refreshes.** `verifiedAt` exists so a periodic review can be built, and it has not
+   been. A curated route that stops operating will keep being shown as 直飞 until someone re-checks.
+3. **No nearby-airport logic.** `nearbyOriginIds` is populated and displayed as a hint, and nothing
+   acts on it. A traveller in Shenzhen is not yet told that Hong Kong might be cheaper.
+4. **No multimodal origin journey.** 苏州 → PVG → Bali is the future flow the brief describes; the
+   model does not prevent it (an origin has coordinates and airports, and a trip stores its origin)
+   but nothing computes it.
+5. **The origin is not on the itinerary.** A trip stores `originCityId`, and the PLAN timeline still
+   starts at the destination airport rather than at the traveller's home city.
+6. **Chinese origins have no visa or entry data.** Deliberately — the brief forbade building a visa
+   engine, and inventing one would be worse than not having it.
+7. **The 97 Bali restaurants and activities still have no photography**, and six places still have
+   no verified location. Both carried over unchanged from the previous pass.

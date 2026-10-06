@@ -116,6 +116,26 @@ where things are?*
 
 ---
 
+## V1.3 — shipped: the origin becomes a first-class entity
+
+- **Meridian is no longer a Singapore product.** Eleven curated origin cities across five groups —
+  Singapore, 粤港澳大湾区, 长三角, 中国其他, 东南亚 — each with a list of airports, because one city
+  is not one airport.
+- **`OriginDestinationConnection` replaces the per-airport Singapore flight fields.** Whether a
+  route is non-stop is a property of an *(origin, destination)* pair; a boolean on the destination
+  airport could only ever describe one origin.
+- **Unknown stays unknown.** `directAvailable` is `boolean | null`, and `null` means we have no
+  data. Those pairs render 航班信息待确认 and show no duration at all — only a straight-line
+  distance, explicitly labelled as one.
+- **The map reorients itself.** Select 广州 and the origin marker, the viewport, the route arc,
+  every duration, the 直飞 filter and the preview card all follow — with no destination-specific
+  code.
+- **The origin persists** in its own store, so a user profile can replace localStorage later by
+  changing one file. Trips carry `originCityId`, with a migration for trips saved before origins
+  existed.
+
+---
+
 ## V1.2 — shipped: Chinese first, discovery, and research
 
 - **Simplified Chinese is the primary language.** A 546-key catalogue rather than scattered
@@ -153,6 +173,14 @@ The goal is to make the reference destination genuinely trustworthy and the othe
   restaurant must be provably of that restaurant.
 - **Verified locations for the six unresolved Bali places.** They need local knowledge or an
   operator's own website, not a better algorithm.
+- **A connection data provider.** 64 of 110 connections are curated route knowledge marked 待确认.
+  Every record already carries `source` and `verifiedAt`, so the work is a provider that populates
+  and refreshes them — not a schema change.
+- **Nearby-airport suggestions.** `nearbyOriginIds` is populated and surfaced; acting on it means
+  comparing a traveller's real options across Shenzhen, Hong Kong and Guangzhou.
+- **The origin on the itinerary.** A trip stores where it departs from, and the PLAN timeline still
+  starts at the destination airport. `出发 → 机场 → 酒店 → 景点 → 机场 → 返回` is the shape the
+  model supports and does not yet draw.
 - **Extraction that reads what guides actually are.** Most Xiaohongshu guides arrive as images.
   Reading them means OCR the researcher runs and pastes, or a platform-permitted API — not a
   scraper.
