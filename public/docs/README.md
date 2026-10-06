@@ -32,7 +32,11 @@ Southeast Asia map  →  select a destination  →  destination map
 | `lib/providers/flights/` | Flight data provider abstraction (static + inert Amadeus/Skyscanner adapters) |
 | `lib/efficiency.ts` | The V1 route-efficiency engine |
 | `lib/store/` | Trip and UI state, persisted to `localStorage` |
-| `scripts/e2e.mjs` | Browser end-to-end test covering the whole V1 workflow |
+| `lib/research/` | Guide extraction, place matching, saved places, the social signal corpus |
+| `components/social/` | The traveller's 导入攻略 flow and 我的收藏 |
+| `app/api/extract/route.ts` | The server-side extraction boundary — the only place an API key is read |
+| `scripts/e2e.mjs` | Browser end-to-end test covering the whole shipped workflow |
+| `scripts/test-social-import.mts` | 103 behaviour checks for guide import, driven by controlled sample text |
 
 ---
 
@@ -95,6 +99,26 @@ Two behaviours matter more than the rest:
 - **The destination opens on EXPLORE, not on a form.** The previous build asked for dates before
   the traveller understood the island. Planning is now something you choose.
 
+**导入攻略 — paste a guide, get places on the map.** Reachable from the header of every tab and from
+PLAN. It takes over the side panel rather than opening a modal, because the promise is that the
+places appear *on the map* and a dialog would cover the answer:
+
+1. **Paste a link, text, or both.** The URL is kept as provenance and is never fetched; the panel
+   says so where a traveller would otherwise expect us to read it.
+2. **Watch four honest stages** — 读取内容 / 识别地点 / 匹配地图地点 / 等你确认. No percentages, because
+   there is no meaningful denominator.
+3. **Confirm what it found.** Each candidate shows the name *exactly as the guide wrote it* next to
+   what Meridian believes it is, with the guide's own sentence quoted underneath and its themes,
+   dishes, warnings and times labelled as the guide's words rather than as facts. `✓` preselects,
+   `?` asks, and an unmatched name is never guessed at — the traveller searches the map or creates
+   the place.
+4. **Save, and see them.** Kept places land in **我的收藏**, a scope inside DO, and stay plotted on
+   the map. From there they add to an itinerary through the existing trip builder.
+
+**`/research` — the internal view.** The same pipeline, with the reviewer's controls: every mention
+with its match band in words, the alias table, saved places and pending submissions. It is labelled
+as internal and is not reachable from the traveller's four tabs.
+
 ---
 
 ## 4. Architecture
@@ -140,6 +164,14 @@ client render agree:
   rewriting components.
 - `lib/store/ui-store.ts` — layer visibility, selection, hover, camera requests. Only preferences
   (`visibleLayers`, `showAreas`, `showRoute`, basemap) are persisted; selection is session state.
+- `lib/store/import-ui.ts` — where the import flow is and what the map should draw while it is
+  there. Deliberately **not** persisted: a half-finished import that reappeared after a refresh
+  would read as data loss rather than as an unsubmitted form.
+
+`lib/research/store.ts` is a third persisted store (`meridian.social.v1`) holding imports, mentions,
+saved places, submissions and the learned alias table. Saved places are **references** to canonical
+ids, not copies, so a card and its marker can never disagree; a place the traveller creates is a
+`UserPlaceSubmission` in `pending_verification` and never enters the canonical dataset.
 
 ### 4.4 Map ↔ itinerary synchronisation
 
@@ -232,6 +264,20 @@ rectangle.
 
 The public OSRM demo server is fine for development; point this at your own instance for production.
 Set `NEXT_PUBLIC_ROUTING_PROVIDER=geodesic` to disable road routing entirely.
+
+### Guide extraction
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_GUIDE_EXTRACTOR` | unset → `deterministic` | Which extractor the **client** uses |
+| `GUIDE_EXTRACTOR` | unset → `deterministic` | Server-side selector, for the route handler |
+| `DEEPSEEK_API_KEY` | — | **Server only.** Read in `app/api/extract/route.ts` and nowhere else |
+| `OPENAI_API_KEY` | — | **Server only.** Used when no DeepSeek key is present |
+| `GUIDE_EXTRACTOR_MODEL` | `deepseek-chat` / `gpt-4o-mini` | Optional model override |
+
+The API key is never exposed client-side: the browser calls `/api/extract`, an internal route, and
+that handler attaches the credential. On the static GitHub Pages build the route is not deployed and
+the deterministic extractor runs, so the feature works with no key at all.
 
 Never commit `.env.local`. `.gitignore` already excludes it.
 
@@ -383,11 +429,18 @@ fails on console errors, uncaught page errors and failed requests, and writes sc
 It requires a browser. The script defaults to a Playwright Chromium cache path and can be
 overridden with `CHROME_PATH`. Install one with `npx playwright install chromium` if needed.
 
-Coverage: homepage → region map → Singapore origin → destination selection → preview card →
+Coverage: homepage → region map → origin selection → destination selection → preview card →
 planner → layer toggles → Marriott/Hilton filtering → price tiers → marker → detail card → trip date
 generation → add to itinerary → reorder → move between days → day/map emphasis sync → route line →
-efficiency panel → transport panel → refresh persistence → mobile layout → **all nine other
-destinations load without crashing** → zero console errors.
+efficiency panel → transport panel → refresh persistence → mobile layout → Chinese UI → the internal
+research view → **importing a guide and seeing its places plotted on the map** → 我的收藏 → the
+unreadable-link failure path → **all nine other destinations load without crashing** → zero console
+errors.
+
+`npm run test:social` is the behavioural suite for guide import: 103 checks over Chinese, English and
+mixed prose, duplicate and partial names, alias learning, unmatched names, saving, creating a place,
+re-import caching, deletion, rate limits and every failure code. It runs entirely against controlled
+sample text — never a live platform, because the product does not fetch them.
 
 `npm run validate:data` runs the data-integrity checks (schema, coordinate bounds, duplicate ids,
 NaN radii, brand-registry coverage, unknown area references, and a "no price in a description"
@@ -423,6 +476,14 @@ hard timeout so one hung action cannot swallow the run.
    photography available" rather than borrowing their area's beach photograph. This is a genuine
    Commons and Openverse coverage limit — fixing it needs licensed photography.
 10. **The public OSRM demo server** is rate-limited and not for production.
+11. **Guide import reads text, not images.** The extractor handles prose the traveller pastes. It
+    cannot read a screenshot, which is how most Xiaohongshu guides actually arrive, and it does not
+    fetch a video transcript. It is also a rule-based extractor by default: it finds names it
+    recognises and names next to a category keyword, and it does not resolve pronouns or follow a
+    link inside the guide. A name it has never seen is reported as unmatched rather than guessed at,
+    and the traveller resolves it by searching or creating the place.
+12. **Imported guides are private.** There is no shared corpus yet, so 社区攻略 counts are
+    legitimately zero and every signal reads 你的攻略. Imported places are per-browser, like trips.
 
 ---
 
@@ -505,7 +566,7 @@ China is an **origin market only**. There are no Chinese destinations, deliberat
 product is fully usable in it.
 
 The localization is an architecture, not a find-and-replace. `lib/i18n/messages.ts` holds
-546 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
+702 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
 which makes a missing or misspelled translation a **compile error** rather than a raw key
 in the interface.
 
@@ -545,6 +606,33 @@ heuristic — and matching refuses to guess: below 0.55 confidence a mention is 
 Nothing reaches a traveller until it has been accepted, and what reaches them is an
 aggregate over accepted mentions — 在 N 份已收录攻略中被提及 — never a popularity claim.
 A fresh install shows no signals at all, because there is no imported research to show.
+
+### How extraction is wired
+
+`lib/research/extractor.ts` defines one `GuideExtractor` interface and two implementations:
+
+| Provider | Runs where | Needs a key | Behaviour |
+| --- | --- | --- | --- |
+| `deterministic` (default) | The browser | No | Rule-based: dictionary, explicit patterns, constrained heuristic |
+| `llm` | Server, via `/api/extract` | Yes | Structured-output extraction from a chat model |
+
+The client never holds a credential. It calls our own route, and `app/api/extract/route.ts` is the
+single place `DEEPSEEK_API_KEY` or `OPENAI_API_KEY` is read. To turn the model on where a server
+exists:
+
+```bash
+GUIDE_EXTRACTOR=llm
+NEXT_PUBLIC_GUIDE_EXTRACTOR=llm     # tells the client to call the route
+DEEPSEEK_API_KEY=...                # or OPENAI_API_KEY
+```
+
+On the static GitHub Pages build the route is not deployed at all, `NEXT_PUBLIC_GUIDE_EXTRACTOR` is
+unset, and the deterministic extractor runs — the feature degrades rather than breaking, and a key
+in the environment never silently becomes a key in a JavaScript bundle.
+
+Matching compares a **loose** key (noise words stripped) and a **strict** key (punctuation and
+accents only), because stripping noise destroys names like `Uluwatu Temple`. Two candidates within
+0.05 of each other are treated as ambiguous and not matched at all.
 
 
 ---

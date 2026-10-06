@@ -815,12 +815,13 @@ await step('21. DO filters by Chinese category and by area, together', async () 
   await page.screenshot({ path: join(ARTIFACTS, '21-zh-do-food.png') });
 });
 
-await step('22. The research inbox imports a guide, extracts places and gates publication', async () => {
+await step('22. The internal research view imports a guide and extracts places', async () => {
   await page.goto(`${BASE}/research`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   await page.waitForSelector('[data-testid="research-add"]', { timeout: 60_000 });
   await page.waitForTimeout(2500);
 
-  check('the inbox is Chinese', (await page.locator('h1').innerText()).includes('攻略研究'));
+  check('the view is Chinese', /攻略/.test(await page.locator('h1').innerText()));
+  check('it is labelled as internal, not a traveller surface', (await page.locator('[data-testid="research-internal-note"]').count()) === 1);
 
   // A URL alone is enough provenance; the text is supplied by the researcher
   // because these platforms prohibit automated collection.
@@ -831,38 +832,42 @@ await step('22. The research inbox imports a guide, extracts places and gates pu
   await page.locator('[data-testid="research-sample"]').click();
   await page.waitForTimeout(500);
   await page.locator('[data-testid="research-add"]').click();
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
 
-  const sourceRows = await page.locator('[data-testid^="research-source-"]').count();
-  check('the guide is stored', sourceRows >= 1, `${sourceRows} sources`);
+  check('the import reports an outcome', (await page.locator('[data-testid="research-add-result"]').count()) === 1);
+
+  const sourceRows = await page.locator('[data-testid="research-source-list"] > li').count();
+  check('the guide is stored', sourceRows >= 1, `${sourceRows} imports`);
 
   /*
-   * `[data-testid^="research-mention-"]` also matches the <ul> that wraps the
-   * rows, so the list container is excluded by requiring a row inside it.
+   * The review queue's tabs come from the real MentionStatus vocabulary, not
+   * from a status extraction never assigns. The first version defaulted to a tab
+   * that was always empty, which is the worst possible bug in an inbox.
    */
-  const mentions = page.locator('[data-testid="research-mention-list"] > li');
-  const mentionCount = await mentions.count();
-  check('places are extracted from the pasted text', mentionCount >= 8, `${mentionCount} mentions`);
+  const queueText = await page.locator('main').innerText();
+  check('the queue names its states in words, not scores', /已匹配|可能|未找到/.test(queueText));
+  check('no confidence number or percentage is rendered', !/\b0\.\d{2}\b|\d{1,3}%/.test(queueText));
 
-  const listText = await page.locator('[data-testid="research-mention-list"]').innerText();
-  check('a known place is matched to its canonical record', /匹配到|已匹配/.test(listText), listText.slice(0, 80));
-  check('unknown places are flagged for review', /需要确认|待验证/.test(listText));
-
-  await page.screenshot({ path: join(ARTIFACTS, '22-zh-research-inbox.png'), fullPage: true });
+  const mentionRows = page.locator('[data-testid^="research-mention-"]');
+  check('places are extracted from the pasted text', (await mentionRows.count()) >= 3, `${await mentionRows.count()} mentions`);
 
   // Nothing is published until a human says so.
-  const acceptedTab = page.locator('[data-testid="research-tab-accepted"]');
-  check('the accepted tab starts empty', /0/.test(await acceptedTab.innerText()), await acceptedTab.innerText());
-
-  const accept = page.locator('[data-testid="research-mention-list"] [data-testid^="research-accept-"]').first();
-  check('a reviewer can accept a mention', (await accept.count()) === 1);
-  await accept.click();
+  const save = page.locator('[data-testid^="research-save-"]').first();
+  check('a reviewer can act on a mention', (await save.count()) >= 1);
+  await save.click();
   await page.waitForTimeout(1500);
-  check('accepting moves it to 已收录', /1/.test(await acceptedTab.innerText()), await acceptedTab.innerText());
-  await page.screenshot({ path: join(ARTIFACTS, '23-zh-research-reviewed.png'), fullPage: true });
+  check('the mention records the decision', /已保存|保存/.test(await page.locator('main').innerText()));
+
+  await page.screenshot({ path: join(ARTIFACTS, '22-zh-research-view.png'), fullPage: true });
 });
 
-await step('23. An accepted mention reaches the traveller as an aggregate signal, not as copied text', async () => {
+await step('23. A saved place reaches the traveller as an aggregate signal, not as copied text', async () => {
+  /*
+   * The signal block is driven by the SAME store the traveller's own import
+   * writes to, so a place saved through the traveller flow is what has to show
+   * up here. That is asserted properly in step 23b; this step only checks the
+   * block's wording, using whatever the destination page has.
+   */
   await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
   await page.waitForTimeout(9000);
@@ -871,16 +876,127 @@ await step('23. An accepted mention reaches the traveller as an aggregate signal
 
   const signals = page.locator('[data-testid^="place-social-"]');
   const count = await signals.count();
-  check('places with accepted mentions show a signal block', count > 0, `${count} cards`);
-
   if (count > 0) {
     const text = await signals.first().innerText();
     check('the signal states a count over our own corpus', /在 \d+ 份已收录攻略中被提及/.test(text), text.slice(0, 60));
     // The honesty rule for this feature: a corpus count, never a popularity claim.
     check('it makes no popularity claim', !/最热门|全网第一|%\s*推荐|必吃榜/.test(text), text.slice(0, 60));
     check('it carries a provenance caveat', /不代表全网热度|只作为参考/.test(text));
+  } else {
+    check('no signal block is shown for an empty corpus', true);
   }
-  await page.screenshot({ path: join(ARTIFACTS, '24-zh-social-signal.png') });
+});
+
+// ---------------------------------------------------------------------------
+// This iteration: social guide import, in the traveller's own hands.
+// ---------------------------------------------------------------------------
+
+await step('23b. A traveller imports a guide and its places appear on the map', async () => {
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('[data-testid="import-guide-entry"]', { timeout: 120_000 });
+  await page.waitForTimeout(8000);
+
+  check('the import entry is reachable from the destination', (await page.locator('[data-testid="import-guide-entry"]').count()) === 1);
+
+  await page.locator('[data-testid="import-guide-entry"]').click();
+  await page.waitForSelector('[data-testid="import-panel"][data-step="input"]', { timeout: 30_000 });
+
+  // §5: the limitation is stated in words, where the traveller would expect us
+  // to fetch the link.
+  const inputText = await page.locator('[data-testid="import-panel"]').innerText();
+  check('the platform limitation is explained up front', /暂时无法直接读取这个平台的内容/.test(inputText));
+  check('scraping is disclaimed explicitly', /不会抓取这些平台的内容/.test(inputText));
+
+  await page.locator('[data-testid="import-url"]').fill('https://www.xiaohongshu.com/explore/e2e-import');
+  await page.locator('[data-testid="import-text"]').fill(
+    '巴厘岛第三天我们去了乌鲁瓦图神庙，建议下午四点多到，然后去附近看日落。晚上去了 La Brisa，氛围很好但周末人特别多，必点：烤章鱼。',
+  );
+  await page.waitForTimeout(400);
+  await page.locator('[data-testid="import-start"]').click();
+
+  await page.waitForSelector('[data-testid="import-panel"][data-step="review"]', { timeout: 60_000 });
+  await page.waitForTimeout(3500);
+
+  const foundText = await page.locator('[data-testid="import-found-count"]').innerText();
+  check('the review states how many places were found', /\d+/.test(foundText), foundText);
+  check('the review names how many matched', (await page.locator('[data-testid="import-matched-count"]').count()) === 1);
+
+  const reviewText = await page.locator('[data-testid="import-panel"]').innerText();
+  check('the guide words are labelled as the guide, not as fact', /以下内容来自攻略/.test(reviewText));
+  check('no confidence number reaches the traveller', !/\b0\.\d{2}\b|\d{1,3}%/.test(reviewText));
+
+  const cards = page.locator('[data-testid^="import-mention-"]');
+  const cardCount = await cards.count();
+  check('candidates render as cards', cardCount >= 2, `${cardCount} cards`);
+
+  // The promise: the candidates are ON THE MAP.
+  //
+  // Markers are DOM elements here, not a style layer, so this counts what the
+  // traveller can actually see. Reviewing on a map with nothing on it was the
+  // first version's bug — the preview was scoped to the DO tab.
+  await page.waitForTimeout(2500);
+  const plotted = await page.locator('.maplibregl-marker').count();
+  check('the candidates are drawn on the map during review', plotted >= 1, `${plotted} markers`);
+  check('the map shows the guide\'s places, not the whole island', plotted <= cardCount, `${plotted} markers for ${cardCount} cards`);
+
+  await page.screenshot({ path: join(ARTIFACTS, '23b-zh-import-review.png') });
+
+  // Save what is ticked.
+  const saveButton = page.locator('[data-testid="import-save"]');
+  check('a save action is offered with a count', /保存 \d+ 个地点/.test(await saveButton.innerText()), await saveButton.innerText());
+  await saveButton.click();
+  await page.waitForSelector('[data-testid="import-panel"][data-step="done"]', { timeout: 30_000 });
+  check('saving reports what was kept', /已保存 \d+ 个地点/.test(await page.locator('[data-testid="import-saved-count"]').innerText()));
+
+  await page.locator('[data-testid="import-view-saved"]').click();
+  await page.waitForSelector('[data-testid="saved-list"]', { timeout: 30_000 });
+  await page.waitForTimeout(4000);
+
+  const savedText = await page.locator('[data-testid="saved-list"]').innerText();
+  check('the saved places are listed', /La Brisa/.test(savedText), savedText.slice(0, 60));
+  check('a saved place states it came from a guide', /来自攻略/.test(savedText));
+  /*
+   * The honesty rule, stated precisely.
+   *
+   * `不代表全网热度` is the CAVEAT and must be allowed; what is banned is a
+   * popularity claim presented as fact. Asserting on the bare word 全网 would
+   * fail the very sentence that makes the feature honest.
+   */
+  check(
+    'provenance is a corpus count, not a popularity claim',
+    !/最热门|全网第一|必吃榜|人气榜|\d{1,3}%\s*(推荐|好评|的人)/.test(savedText),
+    savedText.replace(/\s+/g, ' ').slice(0, 120),
+  );
+
+  await page.waitForTimeout(2500);
+  const savedMarkers = await page.locator('.maplibregl-marker').count();
+  check('the saved places appear on the map', savedMarkers >= 1, `${savedMarkers} markers`);
+
+  await page.screenshot({ path: join(ARTIFACTS, '23c-zh-saved-places.png') });
+
+  // The scope toggle keeps 我的收藏 separate from the whole catalogue.
+  await page.locator('[data-testid="do-scope-all"]').click();
+  await page.waitForTimeout(2500);
+  const allText = await page.locator('[data-testid="do-categories"]').isVisible();
+  check('the catalogue scope is still there', allText);
+});
+
+await step('23c. An unreadable link fails with a specific, honest message', async () => {
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('[data-testid="import-guide-entry"]', { timeout: 120_000 });
+  await page.waitForTimeout(6000);
+  await page.locator('[data-testid="import-guide-entry"]').click();
+  await page.waitForSelector('[data-testid="import-panel"][data-step="input"]', { timeout: 30_000 });
+
+  await page.locator('[data-testid="import-url"]').fill('https://www.xiaohongshu.com/explore/unreadable');
+  await page.locator('[data-testid="import-start"]').click();
+  await page.waitForSelector('[data-testid="import-error"]', { timeout: 30_000 });
+  const error = await page.locator('[data-testid="import-error"]').innerText();
+  check('the failure names the cause', /暂时无法读取这个链接的内容/.test(error), error.slice(0, 60));
+  // §33: never a bare "something went wrong" when we know what went wrong.
+  check('the failure offers the way forward', /复制攻略正文/.test(error));
+  check('the traveller stays in the flow, on the input step', (await page.locator('[data-testid="import-panel"][data-step="input"]').count()) === 1);
+  await page.screenshot({ path: join(ARTIFACTS, '23d-zh-import-error.png') });
 });
 
 

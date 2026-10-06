@@ -120,6 +120,43 @@ The goal is to make the reference destination genuinely trustworthy and the othe
 
 ---
 
+## V1.2 — social guide import
+
+**Paste a travel guide and its places appear on the map.**
+
+- **The traveller pastes; Meridian never scrapes.** The link is kept as provenance and the text is
+  what the traveller supplies. No login, no CAPTCHA solving, no anti-bot evasion, and the interface
+  says so where the traveller would otherwise expect a fetch. A screenshot is still the format most
+  of these guides arrive in, and reading one is not something this iteration attempts.
+- **One place, however many spellings.** `La Brisa`, `La Brisa Bali` and `La Brisa Canggu` resolve
+  to one canonical record, so the guide never becomes a second place database. Confirming a name
+  teaches an alias, and the next import matches it without asking.
+- **A confidence band, never a number.** High preselects, medium asks, low does not guess. The
+  traveller is told what we think a name means, not how sure a model claims to be.
+- **The guide's words are labelled as the guide's.** Themes, dishes, warnings and times are shown as
+  source-derived, never as verified attributes of the place.
+- **Creating a place writes a private submission**, pending review, and never touches the canonical
+  dataset.
+- **The review is on the map.** Candidates are plotted as they are reviewed, and what is kept stays
+  plotted. The map is the answer, not a backdrop.
+- **Extraction sits behind a provider interface.** A deterministic rule-based extractor runs in the
+  browser by default; an LLM extractor calls `/api/extract`, which is the only place an API key
+  exists. A static deployment degrades to the deterministic extractor rather than breaking.
+
+Still open from this iteration:
+
+- **Screenshot and image import.** Most Xiaohongshu guides arrive as images. Reading them needs OCR
+  or a vision model, and it needs the same "the text came from you" contract.
+- **Video transcripts.** A YouTube or TikTok link could yield a transcript the traveller is entitled
+  to read; that is a fetch with a declared purpose, not a scrape, and it needs designing.
+- **Community corpus.** Imported guides are private. A reviewed, aggregated contribution flow is the
+  only honest path to "N guides mention this", and the split between 你的攻略 and 社区攻略 is already
+  in the data shape for it.
+- **Model-assisted matching for unmatched names** with the traveller confirming, rather than the
+  current exact/fuzzy matcher.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces
@@ -161,3 +198,11 @@ The goal is to make the reference destination genuinely trustworthy and the othe
   hand-off, not the product.
 - **Content marketing.** No listicles, no SEO articles, no hero banners. If it does not help someone
   understand where things are, it does not ship.
+- **Scraping social platforms.** No headless browsers, no logged-in sessions, no CAPTCHA solving, no
+  rotation of user agents. The platforms forbid it, it breaks monthly, and it would put a
+  traveller's own account at risk.
+- **A social network.** No feed, no following, no comments, no messaging, no creator profiles, no
+  monetisation of other people's guides. Meridian reads the text a traveller hands it and gives back
+  a map.
+- **Rehosting creator imagery or text.** A guide's photographs and prose belong to whoever made
+  them. Meridian keeps a link and the traveller's own paste, and reproduces neither.

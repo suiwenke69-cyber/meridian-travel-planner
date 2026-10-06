@@ -93,6 +93,15 @@ export interface MapCanvasProps {
   interactive?: boolean;
   onViewChange?: (view: MapView) => void;
   onBackgroundClick?: () => void;
+  /**
+   * A click on the map with the geographic point that was clicked.
+   *
+   * Separate from `onBackgroundClick`, which is a "dismiss what is open"
+   * signal. This one exists because one flow genuinely needs a coordinate: a
+   * traveller creating a place the dataset does not hold has to say where it is,
+   * and pointing at the map is the only truthful way to ask.
+   */
+  onMapClick?: (point: { lat: number; lng: number }) => void;
   children?: ReactNode;
 }
 
@@ -138,6 +147,7 @@ export function MapCanvas({
   interactive = true,
   onViewChange,
   onBackgroundClick,
+  onMapClick,
   children,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -280,13 +290,16 @@ export function MapCanvas({
   }, [map, onViewChange]);
 
   useEffect(() => {
-    if (!map || !onBackgroundClick) return;
-    const handler = () => onBackgroundClick();
+    if (!map) return;
+    const handler = (event: { lngLat: { lat: number; lng: number } }) => {
+      onBackgroundClick?.();
+      onMapClick?.({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+    };
     map.on('click', handler);
     return () => {
       map.off('click', handler);
     };
-  }, [map, onBackgroundClick]);
+  }, [map, onBackgroundClick, onMapClick]);
 
   // --- keep the canvas in sync with layout changes ------------------------
   useEffect(() => {

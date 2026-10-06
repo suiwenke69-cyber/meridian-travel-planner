@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
+import type { Hotel, Place, SocialPlaceMention, UserSavedPlace } from '@/lib/types';
+import type { DoCategory } from '@/lib/store/ui-store';
 import { getDestinationBundle, isLocatable } from '@/lib/data';
 import { countMarkersByLayer, buildMapMarkers } from '@/lib/map-markers';
 import { useTripStore } from '@/lib/store/trip-store';
 import { useUiStore } from '@/lib/store/ui-store';
+import { useImportUiStore } from '@/lib/store/import-ui';
+import { useResearchStore } from '@/lib/research/store';
 import { isRefInTrip } from '@/lib/trip';
 import { useDayLegs } from '@/lib/transport/use-day-legs';
 import { matchesCategory } from './panels/DoPanel';
@@ -48,6 +52,22 @@ export default function DestinationMapView({
   const hoveredItemId = useUiStore((s) => s.hoveredItemId);
   const selectedDayId = useUiStore((s) => s.selectedDayId);
   const showRoute = useUiStore((s) => s.showRoute);
+
+  /*
+   * The import flow and 我的收藏 both narrow the DO marker set.
+   *
+   * They live in a separate store because they are a mode, not a preference —
+   * and because an import review must not survive a reload. While a review is
+   * open the map draws THAT import's candidates and nothing else: the promise is
+   * "paste a guide and its places appear on my map", and a map still covered in
+   * every restaurant on the island would hide the answer.
+   */
+  const previewImportId = useImportUiStore((s) => s.previewImportId);
+  const placeScope = useImportUiStore((s) => s.placeScope);
+  const picking = useImportUiStore((s) => s.picking);
+  const setPickedLocation = useImportUiStore((s) => s.setPickedLocation);
+  const savedPlaces = useResearchStore((s) => s.savedPlaces);
+  const mentions = useResearchStore((s) => s.mentions);
   const selectEntity = useUiStore((s) => s.selectEntity);
   const selectArea = useUiStore((s) => s.selectArea);
   const selectItem = useUiStore((s) => s.selectItem);
@@ -79,8 +99,48 @@ export default function DestinationMapView({
     [bundle],
   );
 
+  /*
+   * An import review outranks the tab.
+   *
+   * The traveller opens the flow from whichever step they were on — usually
+   * EXPLORE or PLAN — and the promise is that their places appear on the map
+   * right then. Scoping the preview to DO meant the review opened on a map with
+   * nothing on it, which is the one moment the feature has to deliver.
+   */
+  const importPreview = useMemo(() => {
+    if (!previewImportId || !bundle) return null;
+    return doScope(bundle.places, bundle.hotels, {
+      previewImportId,
+      mentions,
+      placeScope,
+      savedPlaces,
+      focusedAreaId: null,
+      doCategory,
+      destinationId,
+    });
+  }, [previewImportId, bundle, mentions, placeScope, savedPlaces, doCategory, destinationId]);
+
   const markers = useMemo(() => {
     if (!bundle) return [];
+
+    if (importPreview) {
+      const layers = emptyLayers();
+      for (const place of importPreview.places) layers[place.markerLayer] = true;
+      for (const hotel of importPreview.hotels) layers[hotel.hotelGroup] = true;
+      return buildMapMarkers({
+        hotels: importPreview.hotels,
+        places: importPreview.places,
+        airports: [],
+        trip: null,
+        activeDay: null,
+        visibleLayers: layers,
+        filters: defaultFilters(),
+        selectedEntityId,
+        selectedItemId,
+        hoveredItemId: hoveredEntityId,
+        areaNameById,
+      }).markers;
+    }
 
     if (tab === 'explore') {
       // Areas carry the meaning here; individual markers would compete with them.
@@ -105,12 +165,21 @@ export default function DestinationMapView({
     }
 
     if (tab === 'do') {
-      const scoped = bundle.places.filter((p) => matchesCategory(p, doCategory) && isLocatable(p));
+      const scoped = doScope(bundle.places, bundle.hotels, {
+        previewImportId,
+        mentions,
+        placeScope,
+        savedPlaces,
+        focusedAreaId,
+        doCategory,
+        destinationId,
+      });
       const layers = emptyLayers();
-      for (const place of scoped) layers[place.markerLayer] = true;
+      for (const place of scoped.places) layers[place.markerLayer] = true;
+      for (const hotel of scoped.hotels) layers[hotel.hotelGroup] = true;
       return buildMapMarkers({
-        hotels: [],
-        places: scoped,
+        hotels: scoped.hotels,
+        places: scoped.places,
         airports: [],
         trip: null,
         activeDay: null,
@@ -149,6 +218,13 @@ export default function DestinationMapView({
     hoveredEntityId,
     hoveredItemId,
     areaNameById,
+    importPreview,
+    previewImportId,
+    mentions,
+    placeScope,
+    savedPlaces,
+    focusedAreaId,
+    destinationId,
   ]);
 
   const routePoints = useMemo(() => {
@@ -192,6 +268,8 @@ export default function DestinationMapView({
    */
   const zoneIds = useMemo(() => {
     if (!bundle) return [];
+    // Areas are context; during a review the candidates are the content.
+    if (previewImportId) return [];
     if (tab === 'explore') {
       return bundle.areas.filter((a) => a.isStayBase === (exploreScope === 'stay')).map((a) => a.id);
     }
@@ -199,7 +277,7 @@ export default function DestinationMapView({
     // STAY and DO: the stay bases are the only geography worth naming behind a
     // list of hotels or places. Excursion zones would just add rings.
     return bundle.areas.filter((a) => a.isStayBase).map((a) => a.id);
-  }, [bundle, tab, exploreScope, activeAreaIds]);
+  }, [bundle, tab, exploreScope, activeAreaIds, previewImportId]);
 
   const requestFitRef = useRef(requestFit);
   requestFitRef.current = requestFit;
@@ -215,6 +293,8 @@ export default function DestinationMapView({
   useEffect(() => {
     if (!bundle) return;
     const fit = requestFitRef.current;
+
+    if (previewImportId) return;
 
     if (tab === 'explore') {
       if (focusedArea) {
@@ -242,11 +322,18 @@ export default function DestinationMapView({
     }
 
     if (tab === 'do') {
-      const places = bundle.places.filter(
-        (p) => (!focusedArea || p.areaId === focusedArea.id) && matchesCategory(p, doCategory) && isLocatable(p),
-      );
-      if (places.length === 0) return;
-      fit(places.map((p) => p.coordinates), 11.2);
+      const scoped = doScope(bundle.places, bundle.hotels, {
+        previewImportId,
+        mentions,
+        placeScope,
+        savedPlaces,
+        focusedAreaId: focusedArea?.id ?? null,
+        doCategory,
+        destinationId,
+      });
+      const points = [...scoped.places.map((p) => p.coordinates), ...scoped.hotels.map((h) => h.coordinates)];
+      if (points.length === 0) return;
+      fit(points, points.length === 1 ? 12.5 : 11.2);
       return;
     }
 
@@ -263,7 +350,20 @@ export default function DestinationMapView({
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, doCategory, focusedArea?.id, bundle, activeDay?.id, activeDay?.items.length]);
+  }, [
+    tab,
+    doCategory,
+    focusedArea?.id,
+    bundle,
+    activeDay?.id,
+    activeDay?.items.length,
+    previewImportId,
+    mentions,
+    placeScope,
+    savedPlaces,
+    destinationId,
+  ]);
+
 
   if (!bundle) {
     return <div className="flex h-full items-center justify-center text-sm text-muted">Destination data unavailable.</div>;
@@ -285,6 +385,12 @@ export default function DestinationMapView({
       ariaLabel={`Planning map of ${destination.name}`}
       zoomControlPosition="bottom-right"
       onBackgroundClick={resetSelection}
+      /*
+       * Picking a spot for a place the dataset does not hold. Nothing else in
+       * the product consumes a raw coordinate click, so this is a no-op unless
+       * the traveller is actually placing something.
+       */
+      onMapClick={picking ? (point) => setPickedLocation(point) : undefined}
     >
       <AreaLayer
         areas={bundle.areas}
@@ -334,6 +440,60 @@ export default function DestinationMapView({
       <MapFocusController />
     </MapCanvas>
   );
+}
+
+/**
+ * What the DO tab is allowed to draw.
+ *
+ * Three modes, in priority order: an import under review, 我的收藏, and the
+ * ordinary category browse. They are exclusive rather than additive because
+ * "the places from this guide" and "every restaurant in Canggu" on the same map
+ * would answer neither question.
+ *
+ * Hotels are included because a guide names them and because 我的收藏 has a 酒店
+ * filter; the category browse still shows none, since STAY owns that.
+ */
+function doScope(
+  places: Place[],
+  hotels: Hotel[],
+  options: {
+    previewImportId: string | null;
+    mentions: SocialPlaceMention[];
+    placeScope: 'all' | 'saved';
+    savedPlaces: UserSavedPlace[];
+    focusedAreaId: string | null;
+    doCategory: DoCategory;
+    destinationId: string;
+  },
+): { places: Place[]; hotels: Hotel[] } {
+  const { previewImportId, mentions, placeScope, savedPlaces, focusedAreaId, doCategory, destinationId } = options;
+
+  if (previewImportId) {
+    const ids = new Set(
+      mentions
+        .filter((mention) => mention.importId === previewImportId && mention.matchedPlaceId)
+        .map((mention) => mention.matchedPlaceId as string),
+    );
+    return {
+      places: places.filter((place) => ids.has(place.id) && isLocatable(place)),
+      hotels: hotels.filter((hotel) => ids.has(hotel.id)),
+    };
+  }
+
+  if (placeScope === 'saved') {
+    const ids = new Set(savedPlaces.filter((entry) => entry.destinationId === destinationId).map((entry) => entry.placeId));
+    return {
+      places: places.filter((place) => ids.has(place.id) && isLocatable(place)),
+      hotels: hotels.filter((hotel) => ids.has(hotel.id)),
+    };
+  }
+
+  return {
+    places: places.filter(
+      (place) => (!focusedAreaId || place.areaId === focusedAreaId) && matchesCategory(place, doCategory) && isLocatable(place),
+    ),
+    hotels: [],
+  };
 }
 
 function emptyLayers() {

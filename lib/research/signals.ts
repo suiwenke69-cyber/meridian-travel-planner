@@ -1,4 +1,4 @@
-import type { SocialGuideSource, SocialMention, SocialSignals, SocialPlatform } from '../types';
+import type { SocialImport, SocialPlaceMention, SocialSignals, SocialPlatform } from '../types';
 
 /**
  * Aggregating accepted mentions into the signal a traveller sees.
@@ -18,8 +18,8 @@ import type { SocialGuideSource, SocialMention, SocialSignals, SocialPlatform } 
  */
 
 export interface SignalSources {
-  mentions: SocialMention[];
-  sources: SocialGuideSource[];
+  mentions: SocialPlaceMention[];
+  sources: SocialImport[];
 }
 
 const MIN_FREQUENCY = 2;
@@ -64,10 +64,10 @@ function themesOf(notes: string[]): string[] {
     .map(([id]) => THEME_LABELS[id] ?? id);
 }
 
-function itemsOf(mentions: SocialMention[]): string[] {
+function itemsOf(mentions: SocialPlaceMention[]): string[] {
   const counts = new Map<string, number>();
   for (const mention of mentions) {
-    for (const item of mention.recommendedItems) {
+    for (const item of mention.extractedItems) {
       const key = item.trim();
       if (key.length === 0) continue;
       counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -88,13 +88,18 @@ function itemsOf(mentions: SocialMention[]): string[] {
  */
 export function aggregateSignals({ mentions, sources }: SignalSources): Map<string, SocialSignals> {
   const sourceById = new Map(sources.map((s) => [s.id, s]));
-  const byPlace = new Map<string, SocialMention[]>();
+  const byPlace = new Map<string, SocialPlaceMention[]>();
 
   for (const mention of mentions) {
-    if (mention.status !== 'accepted') continue;
+    /*
+     * Only what the traveller ACCEPTED counts, and only against an import that
+     * still exists. An extracted mention is a machine's guess about a name in a
+     * paste; counting it before a human confirmed it would let the importer
+     * inflate a venue's own numbers.
+     */
+    if (mention.userDecision !== 'save') continue;
     if (!mention.matchedPlaceId) continue;
-    // A mention whose guide has been deleted must not keep counting.
-    if (!sourceById.has(mention.sourceId)) continue;
+    if (!sourceById.has(mention.importId)) continue;
     const list = byPlace.get(mention.matchedPlaceId) ?? [];
     list.push(mention);
     byPlace.set(mention.matchedPlaceId, list);
@@ -106,7 +111,7 @@ export function aggregateSignals({ mentions, sources }: SignalSources): Map<stri
      * Count GUIDES, not mentions. One guide that names a venue three times is
      * still one guide, and the UI says "in N guides".
      */
-    const sourceIds = [...new Set(list.map((m) => m.sourceId))];
+    const sourceIds = [...new Set(list.map((m) => m.importId))];
     const platforms = [
       ...new Set(
         sourceIds
@@ -114,12 +119,14 @@ export function aggregateSignals({ mentions, sources }: SignalSources): Map<stri
           .filter((p): p is SocialPlatform => Boolean(p)),
       ),
     ];
-    const dates = sourceIds.map((id) => sourceById.get(id)?.importedAt).filter(Boolean) as string[];
+    const dates = sourceIds.map((id) => sourceById.get(id)?.createdAt).filter(Boolean) as string[];
 
     out.set(placeId, {
       mentionCount: sourceIds.length,
       platforms,
-      themes: themesOf(list.map((m) => `${m.extractedNotes ?? ''} ${m.rawPlaceName}`)),
+      themes: themesOf(
+        list.flatMap((m) => [m.rawPlaceName, ...m.contextThemes, ...m.positiveThemes, ...m.warnings]),
+      ),
       frequentlyMentioned: itemsOf(list),
       lastReviewedAt: dates.sort().at(-1),
     });
@@ -128,9 +135,13 @@ export function aggregateSignals({ mentions, sources }: SignalSources): Map<stri
 }
 
 /** Mentions that still need a human decision, in the order they should be worked. */
-export function reviewQueue(mentions: SocialMention[]): SocialMention[] {
-  const rank: Record<string, number> = { matched: 0, 'needs-review': 1, pending: 2 };
+export function reviewQueue(mentions: SocialPlaceMention[]): SocialPlaceMention[] {
+  const rank: Record<string, number> = { matched: 0, possible_match: 1, unmatched: 2 };
   return mentions
-    .filter((m) => m.status === 'matched' || m.status === 'needs-review' || m.status === 'pending')
-    .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || (b.matchConfidence ?? 0) - (a.matchConfidence ?? 0));
+    .filter((m) => m.userDecision === 'pending')
+    .sort(
+      (a, b) =>
+        (rank[a.verificationStatus] ?? 9) - (rank[b.verificationStatus] ?? 9) ||
+        (b.matchConfidence ?? 0) - (a.matchConfidence ?? 0),
+    );
 }

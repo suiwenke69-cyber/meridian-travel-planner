@@ -11,6 +11,7 @@ import { hydrateTripStore, useTripStore } from '@/lib/store/trip-store';
 import { hydrateResearchStore } from '@/lib/research/store';
 import { hydrateOriginStore } from '@/lib/store/origin-store';
 import { hydrateUiStore, useUiStore, type PanelTab } from '@/lib/store/ui-store';
+import { useImportUiStore } from '@/lib/store/import-ui';
 import { useIsDesktop } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { useT, useName } from '@/lib/i18n/use-t';
@@ -19,13 +20,14 @@ import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { OriginSelector } from '../region/OriginSelector';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
 import { ImageFrame } from '../ui/ImageFrame';
-import { IconArrowLeft, IconInfo } from '../ui/icons';
+import { IconArrowLeft, IconInfo, IconSparkle } from '../ui/icons';
 import { Popover } from '../ui/Popover';
 import { EntityDetailCard } from './EntityDetailCard';
 import { ExplorePanel } from './panels/ExplorePanel';
 import { StayPanel } from './panels/StayPanel';
 import { DoPanel } from './panels/DoPanel';
 import { PlanPanel } from './panels/PlanPanel';
+import { ImportGuidePanel } from '../social/ImportGuidePanel';
 
 const DestinationMapView = dynamic(() => import('./DestinationMapView'), {
   ssr: false,
@@ -102,6 +104,7 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip?.id, activeTripId]);
 
+
   const t = useT();
   const name = useName();
   const locale = useUiStore((s) => s.locale);
@@ -111,6 +114,25 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
   const selectDay = useUiStore((s) => s.selectDay);
   const focusedAreaId = useUiStore((s) => s.selectedAreaId);
   const selectArea = useUiStore((s) => s.selectArea);
+  /*
+   * The import flow takes over the side panel rather than opening a modal.
+   *
+   * The promise is "paste a guide and its places appear on MY MAP", and a dialog
+   * covering the map would hide the answer at the exact moment it lands. On
+   * desktop the panel swaps; on mobile the bottom sheet does.
+   */
+  const importOpen = useImportUiStore((s) => s.open);
+  const openImport = useImportUiStore((s) => s.openImport);
+  /*
+   * Opening the import flow expands the mobile sheet.
+   *
+   * At the half snap the review shows one card and a lot of map, and the
+   * traveller has to discover that dragging reveals the rest. Reading a list of
+   * candidates is a full-height job.
+   */
+  useEffect(() => {
+    if (importOpen) setSnap('full');
+  }, [importOpen]);
   const selectedEntityId = useUiStore((s) => s.selectedEntityId);
   const selectEntity = useUiStore((s) => s.selectEntity);
   const setHoveredEntity = useUiStore((s) => s.setHoveredEntity);
@@ -172,7 +194,9 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
     }
   };
 
-  const panel = (
+  const panel = importOpen ? (
+    <ImportGuidePanel destinationId={destinationId} />
+  ) : (
     <DestinationPanel
       tab={tab}
       destination={destination}
@@ -201,6 +225,9 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
       }}
       onSelectPlace={(place: Place) => {
         selectEntity(place.id);
+      }}
+      onSelectHotel={(hotel: Hotel) => {
+        selectEntity(hotel.id);
       }}
       onHoverEntity={setHoveredEntity}
       onSelectDay={selectDay}
@@ -245,6 +272,16 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
             and the trip stores it. Changing it here is the same action as on the
             homepage, so the control is the same control.
           */}
+          <button
+            type="button"
+            className="btn-secondary btn-xs shrink-0 whitespace-nowrap"
+            data-testid="import-guide-entry"
+            onClick={() => openImport()}
+            title={t('import.subtitle')}
+          >
+            <IconSparkle size={13} />
+            <span className="hidden sm:inline">{t('import.entry')}</span>
+          </button>
           <OriginSelector />
           <LanguageSwitcher compact />
           {trip && (
@@ -278,7 +315,7 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
             <DestinationMapView destinationId={destinationId} showAreas={showAreas} />
           </div>
 
-          {isDesktop && selectedEntityId && (
+          {isDesktop && selectedEntityId && !importOpen && (
             <div className="pointer-events-none absolute inset-y-0 left-0 z-[500] flex w-[368px] flex-col justify-start p-3">
               <div className="pointer-events-auto scroll-area min-h-0">
                 <EntityDetailCard
@@ -301,12 +338,14 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
           snap={snap}
           onSnapChange={setSnap}
           peekHeight={132}
-          ariaLabel={t(DESTINATION_TABS.find((entry) => entry.id === tab)?.hint ?? 'tab.explore')}
+          ariaLabel={importOpen ? t('import.title') : t(DESTINATION_TABS.find((entry) => entry.id === tab)?.hint ?? 'tab.explore')}
           header={
             <div className="flex min-w-0 items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className="block truncate text-[13.5px] font-semibold">
-                  {t(DESTINATION_TABS.find((entry) => entry.id === tab)?.label ?? 'tab.explore')}
+                  {importOpen
+                    ? t('import.entry')
+                    : t(DESTINATION_TABS.find((entry) => entry.id === tab)?.label ?? 'tab.explore')}
                 </span>
                 <span className="block truncate text-[11px] text-muted">{name.primary(destination)}</span>
               </span>
@@ -359,6 +398,7 @@ function DestinationPanel({
   onFocusWholeIsland,
   onSelectEntity,
   onSelectPlace,
+  onSelectHotel,
   onHoverEntity,
   onSelectDay,
 }: {
@@ -381,6 +421,7 @@ function DestinationPanel({
   onFocusWholeIsland: () => void;
   onSelectEntity: (hotel: Hotel) => void;
   onSelectPlace: (place: Place) => void;
+  onSelectHotel: (hotel: Hotel) => void;
   onHoverEntity: (id: string | null) => void;
   onSelectDay: (dayId: string) => void;
 }) {
@@ -443,6 +484,7 @@ function DestinationPanel({
             areaNameById={areaNameById}
             focusedAreaId={focusedAreaId}
             onSelectPlace={onSelectPlace}
+            onSelectHotel={onSelectHotel}
             onHoverPlace={onHoverEntity}
             selectedPlaceId={selectedEntityId}
             onClearArea={() => onSelectArea('')}

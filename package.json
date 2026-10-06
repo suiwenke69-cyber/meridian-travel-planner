@@ -18,7 +18,9 @@
     "predev": "node scripts/vendor-maplibre-worker.mjs",
     "prebuild": "node scripts/vendor-maplibre-worker.mjs",
     "images:resolve": "node scripts/fetch-bali-images.mjs",
-    "images:download": "node scripts/fetch-bali-images.mjs --download"
+    "images:download": "node scripts/fetch-bali-images.mjs --download",
+    "test:social": "tsx scripts/test-social-import.mts",
+    "test:all": "npm run typecheck && npm run validate:data && npm run test:social"
   },
   "dependencies": {
     "maplibre-gl": "^6.12.0",

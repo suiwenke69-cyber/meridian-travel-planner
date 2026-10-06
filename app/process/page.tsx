@@ -166,6 +166,31 @@ const SCREENSHOTS: Array<{ file: string; title: string; body: string }> = [
     body: 'The bottom sheet starts collapsed so the map owns the screen, with the search field visible as the invitation to explore. The map refits when the sheet changes size.',
   },
   {
+    file: '50-zh-import-input.jpg',
+    title: '导入攻略 — paste a link or the text',
+    body: 'The limitation is stated where the traveller would otherwise expect us to fetch the link, and the link is kept as provenance either way.',
+  },
+  {
+    file: '51-zh-import-review.jpg',
+    title: 'The review is on the map',
+    body: 'Two candidates found, both plotted. The name is shown exactly as the guide wrote it, next to what Meridian believes it is, with the guide’s own sentence quoted underneath.',
+  },
+  {
+    file: '53-zh-import-resolver.jpg',
+    title: 'An unmatched name is never guessed at',
+    body: 'Milk & Madu is not in the dataset, so the traveller resolves it: search the canonical places, or create the place as a private submission pending review.',
+  },
+  {
+    file: '52-zh-saved-places.jpg',
+    title: '我的收藏',
+    body: 'Kept places land in their own scope inside DO, filtered by category, each labelled 来自攻略 with a corpus count rather than a popularity claim — and still on the map.',
+  },
+  {
+    file: '54-zh-import-mobile.jpg',
+    title: 'Import on a phone',
+    body: 'The sheet expands to full height for the review so the list is readable, and the map above it keeps showing the candidate a card refers to.',
+  },
+  {
     file: '10-mobile-selected.jpg',
     title: 'Selection on mobile',
     body: 'The arc and both endpoints stay visible above the sheet. Expanding the sheet does not bury the destination, because the fit accounts for the sheet height.',
@@ -178,6 +203,7 @@ const STACK = [
   ['Tiles', 'CARTO vector tiles, with OpenFreeMap as an automatic fallback'],
   ['Routing', 'OSRM road geometry, with a documented geodesic estimator as fallback'],
   ['State', 'Zustand + localStorage, manual hydration'],
+  ['Guide extraction', 'Provider interface — deterministic rule-based by default, LLM behind a server route'],
   ['Styling', 'Tailwind with CSS custom properties as design tokens'],
   ['Runtime dependencies', 'maplibre-gl, next, react, react-dom, zustand — five'],
 ];
@@ -204,12 +230,44 @@ const DECISIONS: Array<[string, string]> = [
     'Each record carries verified / approximate / demo plus a note describing what the point marks. 5 of 119 places are approximate and are drawn with a visible badge.',
   ],
   [
+    'The import flow takes the panel, not a dialog',
+    'The promise is that a guide’s places appear on your map. A modal covering the map would hide the answer at the exact moment it arrives, so the flow swaps the destination side panel and plots candidates as they are reviewed. The first version scoped the preview to the DO tab and drew nothing — the feature has to deliver on the one screen it is about.',
+  ],
+  [
+    'Never scrape, and say so in the interface',
+    'Xiaohongshu, Douyin, TikTok and Instagram prohibit automated collection. A scraper breaks monthly, puts a traveller’s own account at risk, and could not be shipped honestly. So the URL is provenance only and the text is what the traveller pastes — stated in words where they would otherwise expect a fetch, rather than buried in a policy page.',
+  ],
+  [
+    'The API key never reaches the browser',
+    'Extraction sits behind a GuideExtractor interface. The deterministic rule-based extractor is the default so the feature works offline and for free; the LLM extractor calls our own /api/extract, which is the single place DEEPSEEK_API_KEY or OPENAI_API_KEY is read. On the static build that route is not deployed at all, so the feature degrades instead of breaking and a key in the environment cannot become a key in a bundle.',
+  ],
+  [
+    'A confidence band, never a number',
+    'High preselects, medium asks, low does not guess — and the interface says “possibly this place”, not “0.72”. A score invites the traveller to trust a threshold they cannot inspect; a band asks the only question that matters, which is whether we got it right.',
+  ],
+  [
+    'One place, however many spellings',
+    'La Brisa, La Brisa Bali and La Brisa Canggu resolve to one canonical record, and saving stores a reference rather than a copy. A second beach club called La Brisa Bali would be worse than not importing the guide at all. For the same reason an unmatched name has no “accept our guess” option — a wrong automatic answer is exactly how duplicate canonical places are born.',
+  ],
+  [
     'Area boundaries are dashed circles',
     'Real administrative polygons were not available. A dash pattern and an “approximate extent” tooltip say so, rather than drawing a guess as if it were official.',
   ],
 ];
 
 const BUGS: Array<[string, string]> = [
+  [
+    'Every mention inherited the whole paragraph’s themes',
+    'La Brisa was classified as a temple and credited with a sunset it never had, because the extractor classified a sentence using its parent line. Segmenting to the sentence fixed the attribution — and immediately revealed that “第二天在长谷吃了 Milk & Madu” no longer matched at all, since the restaurant was named without a restaurant word. A visit-verb gate restored it.',
+  ],
+  [
+    'A venue glued to its sentence was never found',
+    '「晚上去了蓝房子酒吧」 captured 晚上去了蓝房子 in one greedy run, which the function-word filter then threw away — and because the scan resumed past the match, 蓝房子 was never tried. A guide writing “去了X酒吧” is the common case, not the edge case, so the capture is now trimmed back to the last function word instead of discarded.',
+  ],
+  [
+    'Rendered more hooks than during the previous render',
+    '我的收藏 was added to DO as an early return before the component’s remaining hooks, so switching scope changed the hook count and React refused to render. Only the browser suite caught it; the type checker and every unit test were happy. The scope branch now sits after the last hook.',
+  ],
   [
     'A destination sat off-screen',
     'A hard-coded region bounding box had drifted out of date and excluded Bali. Bounds are now derived from the data, so adding a destination cannot reproduce the bug.',
@@ -371,6 +429,61 @@ export default function ProcessPage() {
             Water crossings are modelled as data, so Ubud → Nusa Penida renders as a two-mode leg —
             car to Sanur Harbour, then a fast boat. Full multimodal routing is deliberately not
             attempted in V1.
+          </p>
+        </Section>
+
+        <Section title="Turning a guide into places on a map">
+          <p>
+            The core product moment of this iteration is one sentence long:{' '}
+            <strong>paste a travel guide, and its places appear on my map.</strong> Everything below
+            exists to make that true without inventing anything along the way.
+          </p>
+          <p>
+            <strong>Meridian does not scrape.</strong> Xiaohongshu, Douyin, TikTok and Instagram
+            prohibit automated collection, and a scraper would break monthly, put a traveller’s own
+            account at risk and still fail on the screenshot that most guides actually are. So the
+            link is kept as provenance and never fetched, and the text is what the traveller pastes.
+            That limitation is stated in the interface, in words, exactly where a traveller would
+            otherwise expect us to read the link: 暂时无法直接读取这个平台的内容。
+          </p>
+          <p>
+            <strong>Extraction is a provider, not a vendor.</strong> A <code>GuideExtractor</code>{' '}
+            interface has two implementations. The deterministic rule-based extractor runs in the
+            browser, needs no key and costs nothing, and is the default so the feature is
+            demonstrable offline. The LLM extractor posts to <code>/api/extract</code> — an internal
+            route, and the only place <code>DEEPSEEK_API_KEY</code> or{' '}
+            <code>OPENAI_API_KEY</code> is read. The browser calls our route and never holds a
+            credential; the static build has no server, so the route is not deployed and the
+            deterministic extractor simply runs. The feature degrades rather than breaking, and a
+            key in the environment cannot silently become a key in a JavaScript bundle.
+          </p>
+          <p>
+            <strong>Matching refuses to guess.</strong> Names are compared on a loose key (noise
+            words stripped) and a strict key (punctuation and accents only), because stripping noise
+            destroys names that legitimately contain a region word — Uluwatu Temple among them. Two
+            candidates within 0.05 of each other are treated as ambiguous and matched to neither.
+            Above the floor the interface speaks in bands: a high-confidence match is preselected, a
+            medium one asks, and a low one is reported as unmatched. No score is ever rendered.
+          </p>
+          <p>
+            <strong>The guide’s words stay the guide’s words.</strong> Themes, dishes, warnings and
+            times are shown as source-derived, under a line that says so: 以下内容来自攻略，不是
+            Meridian 核实过的事实。 A guide saying a beach club is crowded on weekends is useful; it
+            is not a verified attribute of the place, and the interface never dresses it as one.
+          </p>
+          <p>
+            <strong>A new place is a submission, not a place.</strong> When the dataset does not hold
+            what the guide named, the traveller can place it on the map by hand — which writes a{' '}
+            <code>UserPlaceSubmission</code> in <code>pending_verification</code>, private to its
+            creator and never written into the canonical registry. It appears in 我的收藏 in its own
+            visual register, labelled 待核实, and is never given the card a verified place gets.
+          </p>
+          <p className="text-muted">
+            Signals are aggregates over the traveller’s own saved mentions, and the two corpora —
+            你的攻略 and 社区攻略 — are rendered separately and never summed. What it says is “在 N 份
+            已收录攻略中被提及”, which is a claim about our own corpus and is checkable. There is no
+            popularity ranking anywhere in the product, and a fresh install shows no signals at all
+            because there is nothing imported to show.
           </p>
         </Section>
 

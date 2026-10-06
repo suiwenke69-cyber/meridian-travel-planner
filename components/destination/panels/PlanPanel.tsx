@@ -18,6 +18,7 @@ import { pick } from '@/lib/i18n';
 import { ImageFrame } from '../../ui/ImageFrame';
 import { TransportLegRow } from '../TransportLegRow';
 import { TripSetupForm } from '../../planner/TripSetupForm';
+import { ImportGuideCta } from '../../social/ImportGuideCta';
 import { IconArrowDown, IconArrowUp, IconClose, IconGrip, IconPlus } from '../../ui/icons';
 
 /**
@@ -67,8 +68,16 @@ export function PlanPanel({
 
   if (!trip) {
     return (
-      <div className="scroll-area h-full">
-        <TripSetupForm destination={destination} trip={null} />
+      <div className="scroll-area h-full p-3">
+        {/*
+          Offered BEFORE the trip form, because a guide is often the reason
+          somebody opens PLAN at all: the itinerary already exists in a
+          screenshot, and the form is the second thing they want.
+        */}
+        <ImportGuideCta className="mb-3" />
+        <div className="rounded-card border border-line bg-surface">
+          <TripSetupForm destination={destination} trip={null} />
+        </div>
       </div>
     );
   }
@@ -107,6 +116,7 @@ export function PlanPanel({
         </div>
       ) : (
         <>
+          <ImportGuideCta variant="row" />
           <DayTabs trip={trip} activeDayId={activeDay?.id ?? null} analyses={analyses} onSelectDay={onSelectDay} />
           {activeDay && (
             <DayTimeline

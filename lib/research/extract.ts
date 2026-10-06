@@ -1,5 +1,5 @@
 import type { MentionSentiment, RecommendationType } from '../types';
-import { matchPlace, type MatchTarget } from './match';
+import { matchPlace, type MatchResult, type MatchTarget } from './match';
 import { isCjk, normalizePlaceName } from './normalize';
 
 /**
@@ -41,14 +41,29 @@ export interface ExtractArea {
 export interface ExtractedMention {
   rawPlaceName: string;
   normalizedPlaceName: string;
+  /** The sentence it was found in. Short — never the whole post. */
+  rawText: string;
   matchedPlaceId?: string;
   matchMethod?: 'exact' | 'alias' | 'fuzzy';
   matchConfidence?: number;
   recommendationType: RecommendationType;
   sentiment: MentionSentiment;
   extractedNotes?: string;
+  /** One short line on why this looked like a place. */
+  extractedReason?: string;
   recommendedItems: string[];
   areaHint?: string;
+  /**
+   * Source-derived insight, kept separate from place attributes on purpose.
+   *
+   * "周末人多" is something a guide said, not a property of La Brisa. Storing it
+   * as an attribute would make a subjective claim look like verified data, which
+   * §9 of the brief forbids.
+   */
+  contextThemes: string[];
+  positiveThemes: string[];
+  warnings: string[];
+  bestTimeMentioned?: string;
 }
 
 export interface ExtractResult {
@@ -64,7 +79,13 @@ export interface ExtractResult {
 const TYPE_KEYWORDS: Array<{ type: RecommendationType; test: RegExp }> = [
   { type: 'beachclub', test: /beach\s?club|海滩俱乐部|沙滩俱乐部|无边泳池|泳池派对/i },
   { type: 'cafe', test: /咖啡|咖啡馆|手冲|拿铁|latte|caf[eé]|roaster|早午餐|brunch|烘焙|bakery/i },
-  { type: 'restaurant', test: /餐厅|饭店|餐馆|美食|必吃|推荐菜|招牌|人均|好吃|restaurant|warung|eatery|dining|dinner|lunch/i },
+  {
+    type: 'restaurant',
+    // Meal words are among the strongest signals there is a venue in the
+    // sentence: "在长谷吃了 Milk & Madu，早餐很好" names a place without ever
+    // using the word restaurant.
+    test: /餐厅|饭店|餐馆|美食|必吃|推荐菜|招牌|人均|好吃|早餐|午餐|晚餐|吃了|去吃|restaurant|warung|eatery|dining|dinner|lunch|breakfast/i,
+  },
   { type: 'bar', test: /酒吧|鸡尾酒|夜店|小酒馆|cocktail|bar\b|nightclub|live\s?music/i },
   { type: 'beach', test: /海滩|沙滩|beach|pantai/i },
   { type: 'nature', test: /瀑布|火山|梯田|森林|稻田|国家公园|waterfall|volcano|rice\s?terrace|jungle/i },
@@ -78,6 +99,65 @@ const TYPE_KEYWORDS: Array<{ type: RecommendationType; test: RegExp }> = [
 const POSITIVE = /推荐|必去|必吃|必点|好吃|超好|最爱|喜欢|惊喜|惊艳|值得|好评|很棒|不错|强烈推荐|宝藏|不踩雷|值得排队|must\s?try|recommend|amazing|great|best|favourite|favorite|worth/i;
 const NEGATIVE = /不推荐|别去|踩雷|难吃|失望|不怎么样|一般般|坑|不建议|不好吃|差|overrated|disappointing|avoid|not\s?worth/i;
 const MIXED = /但是|不过|只是|唯一|缺点是|排队|人多|偏贵|有点贵|等位|however|but\s|busy|queue|pricey/i;
+
+/**
+ * Themes the traveller might care about, as short noun phrases.
+ *
+ * Deliberately a fixed vocabulary rather than free text: these are shown beside
+ * a place as "攻略里提到", and user-supplied prose there would read as a claim
+ * about the venue.
+ */
+const CONTEXT_THEMES: Array<{ label: string; test: RegExp }> = [
+  { label: '日落', test: /日落|sunset|夕阳/i },
+  { label: '日出', test: /日出|sunrise/i },
+  { label: '海边', test: /海滩|海边|beachfront|beach\b/i },
+  { label: '悬崖景', test: /悬崖|cliff/i },
+  { label: '稻田景', test: /稻田|梯田|rice\s?terrace/i },
+  { label: '丛林景', test: /丛林|森林|jungle|forest/i },
+  { label: '泳池', test: /泳池|无边泳池|pool/i },
+  { label: '出片', test: /出片|拍照|photo|instagram/i },
+  { label: '适合办公', test: /办公|工作|wifi|work/i },
+  { label: '适合带孩子', test: /亲子|带娃|孩子|kids|family/i },
+  { label: '安静', test: /安静|清静|quiet|calm/i },
+];
+
+const POSITIVE_THEMES: Array<{ label: string; test: RegExp }> = [
+  { label: '氛围好', test: /氛围|气氛|vibe|atmosphere/i },
+  { label: '好吃', test: /好吃|美味|delicious/i },
+  { label: '咖啡好', test: /咖啡.{0,4}(好|不错|棒)|手冲|coffee.{0,6}(good|great)/i },
+  { label: '服务好', test: /服务.{0,4}(好|不错|棒)|service.{0,6}(good|great)/i },
+  { label: '性价比高', test: /性价比|便宜|实惠|good\s?value|cheap/i },
+  { label: '值得专程', test: /值得|必去|必吃|must\s?try|worth/i },
+];
+
+const WARNING_RULES: Array<{ label: string; test: RegExp }> = [
+  { label: '周末人多', test: /周末.{0,10}(多|挤|满)|weekend.{0,12}(busy|crowd)/i },
+  { label: '需要排队', test: /排队|等位|queue|wait/i },
+  { label: '人多', test: /人多|很挤|拥挤|busy|crowd/i },
+  { label: '偏贵', test: /偏贵|有点贵|价格高|pricey|expensive/i },
+  { label: '需要提前订位', test: /提前.{0,6}(订|预订|预约)|book.{0,10}ahead|reservation/i },
+  { label: '路况差', test: /堵车|堵|traffic|rough\s?road/i },
+  { label: '猴子抢东西', test: /猴子.{0,6}(抢|拿)|monkey.{0,10}(steal|grab)/i },
+  { label: '下水注意安全', test: /浪大|暗流|注意安全|current|rip/i },
+];
+
+/** Times a guide names, e.g. "下午四点多到" or "sunset from 16:30". */
+const TIME_MARKERS: Array<{ test: RegExp; value: string }> = [
+  { test: /早上|清早|早晨|morning/i, value: '早上' },
+  { test: /上午|before\s?noon/i, value: '上午' },
+  { test: /中午|noon/i, value: '中午' },
+  { test: /下午|afternoon/i, value: '下午' },
+  { test: /傍晚|黄昏|日落|sunset/i, value: '日落时分' },
+  { test: /晚上|夜里|night/i, value: '晚上' },
+];
+
+function themesFrom(context: string, rules: Array<{ label: string; test: RegExp }>): string[] {
+  return rules.filter((rule) => rule.test.test(context)).map((rule) => rule.label);
+}
+
+function bestTimeFrom(context: string): string | undefined {
+  return TIME_MARKERS.find((marker) => marker.test.test(context))?.value;
+}
 
 const ITEM_MARKERS = /(?:必点|推荐菜|招牌菜|招牌|必吃|点单|点了|点了这|推荐点|特色菜|signature|must\s?try|known\s?for)\s*[:：]?\s*([^\n。；;]{2,80})/gi;
 
@@ -111,13 +191,25 @@ const FALSE_POSITIVE_NAMES = new Set([
 // ---------------------------------------------------------------------------
 
 interface Segment {
+  /** The sentence. */
   text: string;
-  /** The wider line, used for sentiment and category context. */
-  context: string;
+  /** The line it came from, used only to locate the mention in the source text. */
+  line: string;
+  /** Offset of this sentence within the whole text. */
   index: number;
+  /** Length of the sentence, so a mention can be located inside it. */
+  length: number;
 }
 
-/** Split into roughly sentence-sized units, keeping the parent line as context. */
+/**
+ * Split into sentence-sized units.
+ *
+ * The first version kept the whole LINE as `context` and used it for every
+ * insight. A sample guide written as one paragraph then gave every place the
+ * same themes, warnings and dishes — La Brisa inherited 神庙 from a temple
+ * mentioned two sentences earlier and was classified as culture. Insights belong
+ * to the sentence a place appears in, and so does its category.
+ */
 function segment(text: string): Segment[] {
   const out: Segment[] = [];
   let cursor = 0;
@@ -125,9 +217,13 @@ function segment(text: string): Segment[] {
     const trimmed = line.trim();
     if (trimmed.length > 0) {
       const parts = trimmed.split(/(?<=[。！？!?；;])|(?<=\.\s)/);
+      let offset = cursor;
       for (const part of parts) {
         const value = part.trim();
-        if (value.length >= 2) out.push({ text: value, context: trimmed, index: cursor });
+        if (value.length >= 2) {
+          out.push({ text: value, line: trimmed, index: offset, length: part.length });
+        }
+        offset += part.length;
       }
     }
     cursor += line.length + 1;
@@ -235,6 +331,8 @@ interface Candidate {
   segment: Segment;
   /** Set when this came from a known name, which makes it far more trustworthy. */
   dictionaryHitFor?: ExtractPlace;
+  /** Set when an explicit pattern (店名：/ 📍 / list) produced it. */
+  fromPattern?: boolean;
 }
 
 /**
@@ -268,12 +366,16 @@ function dictionaryCandidates(text: string, places: ExtractPlace[], segments: Se
       if (overlaps) continue;
       for (let i = start; i < end; i += 1) consumed[i] = true;
 
-      const seg = segments.find((s) => start >= s.index && start < s.index + s.context.length) ?? {
-        text: match[0],
-        context: match[0],
-        index: start,
-      };
-      found.push({ rawPlaceName: match[0].trim(), segment: seg, dictionaryHitFor: place });
+      const hit = match[0];
+      const seg =
+        segments.find((s) => start >= s.index && start < s.index + s.length) ??
+        segments.find((s) => s.line.includes(hit)) ?? {
+          text: hit,
+          line: hit,
+          index: start,
+          length: hit.length,
+        };
+      found.push({ rawPlaceName: hit.trim(), segment: seg, dictionaryHitFor: place });
     }
   }
   return found;
@@ -298,7 +400,7 @@ function patternCandidates(segments: Segment[]): Candidate[] {
       let match: RegExpExecArray | null;
       while ((match = rule.exec(seg.text)) !== null) {
         const value = (match[1] ?? '').trim();
-        if (value.length >= 2) out.push({ rawPlaceName: value, segment: seg });
+        if (value.length >= 2) out.push({ rawPlaceName: value, segment: seg, fromPattern: true });
       }
     }
   }
@@ -328,6 +430,17 @@ const CJK_NAME =
 
 /** Chinese function words and verbs: a run containing these is a sentence, not a name. */
 const CJK_STOPWORDS = /[了的是很都有去在和会要可以没不我你他她它们这那个吗呢吧啊把被给对从到就还也很太更最]/;
+/**
+ * The same list, for stripping a sentence off the front of a glued name.
+ *
+ * `CJK_NAME` anchors on the venue noun and captures up to eight characters
+ * BEFORE it, leftmost-first. So "晚上去了蓝房子酒吧" captured 晚上去了蓝房子, which the
+ * stopword gate then rejected — and because the scan resumed after the match,
+ * 蓝房子 was never tried. A guide that writes "去了X酒吧" is the common case, not
+ * the edge case, so the run is trimmed back to the last function word instead of
+ * being thrown away.
+ */
+const CJK_STOPWORD_TRIM = /^.*[了的是很都有去在和会要可以没不我你他她它们这那个吗呢吧啊把被给对从到就还也很太更最]/;
 /** Generic English words that look like proper nouns but are not venues. */
 const LATIN_STOPWORDS = new Set([
   'fine', 'dining', 'lunch', 'dinner', 'breakfast', 'brunch', 'coffee', 'cafe', 'bar', 'beach',
@@ -336,12 +449,24 @@ const LATIN_STOPWORDS = new Set([
   'dua', 'denpasar', 'day1', 'day2', 'day3', 'am', 'pm', 'ok', 'good', 'nice', 'best', 'great',
 ]);
 
+/**
+ * Verbs that put a sentence in the "we went somewhere" register.
+ *
+ * The heuristic pass only hunts for unknown names in place-shaped sentences, and
+ * gating that on category keywords alone lost real venues: "第二天在长谷吃了
+ * Milk & Madu，早餐很好" names a restaurant without using a restaurant word, and
+ * tightening the context to the sentence (which fixed insight attribution) made
+ * that loss visible.
+ */
+const VISIT_VERB =
+  /去了|去吃|吃了|吃的是|住了|住在|逛了|逛|玩了|打卡|参观|体验|去过|到访|visited|went to|stayed at|ate at/i;
+
 function heuristicCandidates(segments: Segment[]): Candidate[] {
   const out: Candidate[] = [];
   for (const seg of segments) {
-    const type = classifyType(seg.context);
+    const type = classifyType(seg.text);
     // Only hunt for unknown names in sentences that are talking about a place.
-    if (type === 'unknown') continue;
+    if (type === 'unknown' && !VISIT_VERB.test(seg.text)) continue;
 
     LATIN_NAME.lastIndex = 0;
     let latin: RegExpExecArray | null;
@@ -355,13 +480,18 @@ function heuristicCandidates(segments: Segment[]): Candidate[] {
       out.push({ rawPlaceName: value, segment: seg });
     }
 
-    if (!/[餐厅|咖啡|酒吧|海滩|酒店|店|馆|寺|瀑布|梯田]/.test(seg.context)) continue;
+    if (!/[餐厅|咖啡|酒吧|海滩|酒店|店|馆|寺|瀑布|梯田]/.test(seg.text)) continue;
     CJK_NAME.lastIndex = 0;
     let cjk: RegExpExecArray | null;
     while ((cjk = CJK_NAME.exec(seg.text)) !== null) {
-      const value = cjk[1];
+      let value = cjk[1];
+      if (CJK_STOPWORDS.test(value)) {
+        // Keep the tail: the name is the part after the last function word.
+        const trimmed = value.replace(CJK_STOPWORD_TRIM, '');
+        if (trimmed.length < 2 || CJK_STOPWORDS.test(trimmed)) continue;
+        value = trimmed;
+      }
       if (value.length < 2 || value.length > 8) continue;
-      if (CJK_STOPWORDS.test(value)) continue;
       out.push({ rawPlaceName: value, segment: seg });
     }
   }
@@ -437,7 +567,8 @@ export function extractMentions(
 
   const mentions: ExtractedMention[] = [];
   for (const { candidate, fromDictionary } of byKey.values()) {
-    const context = candidate.segment.context;
+    // The SENTENCE, not the line: see the note on `segment`.
+    const context = candidate.segment.text;
     let recommendationType = classifyType(context);
     /*
      * A guide line like "晚上 Old Man's，啤酒便宜" carries no category keyword, but
@@ -452,28 +583,38 @@ export function extractMentions(
       candidate.dictionaryHitFor?.areaId ??
       [...areaCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
-    let match = matchPlace(candidate.rawPlaceName, targets, { areaHint, recommendationType });
+    let match: MatchResult | null = matchPlace(candidate.rawPlaceName, targets, { areaHint, recommendationType });
 
     /*
      * A dictionary hit is a name we already hold, so the matcher should agree.
      * When it does not — an alias we did not index, say — trust the dictionary
      * and record which place it was.
      */
-    if (!match.placeId && candidate.dictionaryHitFor && fromDictionary) {
+    if (match && !match.placeId && candidate.dictionaryHitFor && fromDictionary) {
       match = { placeId: candidate.dictionaryHitFor.id, method: 'alias', confidence: 0.9 };
     }
 
     mentions.push({
       rawPlaceName: candidate.rawPlaceName,
       normalizedPlaceName: normalizePlaceName(candidate.rawPlaceName),
-      matchedPlaceId: match.placeId ?? undefined,
-      matchMethod: match.method ?? undefined,
-      matchConfidence: match.confidence > 0 ? Number(match.confidence.toFixed(2)) : undefined,
+      rawText: context.length > 160 ? `${context.slice(0, 160)}…` : context,
+      matchedPlaceId: match?.placeId ?? undefined,
+      matchMethod: match?.method ?? undefined,
+      matchConfidence: match && match.confidence > 0 ? Number(match.confidence.toFixed(2)) : undefined,
       recommendationType,
       sentiment,
       extractedNotes: paraphrase(context, sentiment, recommendationType),
+      extractedReason: candidate.dictionaryHitFor
+        ? '与已收录地点同名'
+        : candidate.fromPattern
+          ? '出现在攻略的列表或标注中'
+          : '出现在提到地点的句子里',
       recommendedItems: extractItems(context),
       areaHint,
+      contextThemes: themesFrom(context, CONTEXT_THEMES),
+      positiveThemes: sentiment === 'negative' ? [] : themesFrom(context, POSITIVE_THEMES),
+      warnings: themesFrom(context, WARNING_RULES),
+      bestTimeMentioned: bestTimeFrom(context),
     });
   }
 

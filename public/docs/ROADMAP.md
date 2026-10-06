@@ -48,20 +48,11 @@ where things are?*
 - Desktop map-first with a contextual right rail; mobile converts the rail into a three-snap sheet.
 
 ### Photography
-- Provider-based image architecture (`lib/images/`): components ask for images by
-  `(entityKind, entityId)` and never hold a URL. Licence, author, source page and a `subject`
-  field ship with every image and render on the card and the detail view.
-- **134 images across 60 subjects**, resolved from Wikimedia Commons and Openverse, restricted to
-  commercial-use licences (CC BY, CC BY-SA, CC0, public domain). No NC, no ND.
-- **A hotel photo is only used if it is provably of that property** — the file title must name the
-  property *and* the right part of Bali, or the file must sit in the property's own Commons
-  category. Four of twenty Bali hotels clear that bar; the other sixteen have no entry at all and
-  say **"No property photography available"**. They never borrow their area's beach photograph, and
-  a photograph of the resort's name on a wall does not count as property photography.
-- Every candidate is fetched before it is written into the manifest, so a source that has since
-  been deleted is dropped rather than shipped as a broken image.
-- Designed fallbacks for no image, a failed image and a representative image — and a compact
-  text-led card, rather than an empty photograph-sized hole, when there is no photo at all.
+- Provider-based image architecture (`lib/images/`) with licence, author and a `subject` field that
+  records what a photo actually depicts.
+- 80 images resolved from Wikimedia Commons with credit lines; three hotels have genuine property
+  photos and the rest borrow their area image, labelled as such.
+- Designed fallbacks for no image, a failed image and a representative image.
 
 ### Transport
 - `TransportLeg` as a first-class itinerary item with mode, rationale, alternatives, distance,
@@ -71,23 +62,12 @@ where things are?*
 - Recommendation kept separate from routing; water crossings modelled as data for future
   multimodal support.
 - Nothing fabricated: an unanswered route renders as "Route unavailable", never as an estimate.
-- **Transport legs are first-class in PLAN**: `mode · estimated duration · distance`, then the
-  rationale, then a source badge naming the routing engine — or saying **No route data**. Where any
-  leg is unmeasured the whole day's clock is marked `approx`. Traffic is not modelled and each
-  measured leg is labelled a free-flow estimate.
 - Layers: Marriott, Hilton, Activities, Nature, Beaches, Food, Nightlife, Airport, Transport —
   each with a live count.
 - Filters: hotel group, price tier, travel style, place category, free-text search. The legend and
   the marker set are produced by the same function, so they cannot disagree.
 - Where-to-stay panel with per-area scores, best-for / weak-for, loyalty inventory and price tier.
-- **Travel zones built from each area's own mapped content** — a convex hull of its hotels and
-  places, offset outward and smoothed, drawn as a tinted wash with a fine dashed edge. A hull keeps
-  the shape of the content (Canggu is a coastal strip, Uluwatu is a cliff line) where a radius
-  circle said nothing. Dashed means approximate, and the UI says so in words. The zones are drawn
-  *below* the basemap's water layer so they clip to the coastline instead of floating out to sea.
-- **One scope at a time.** EXPLORE draws the nine stay bases or the six day-trip zones, never all
-  fifteen at once — the panel's segmented control and the map share one piece of state through the
-  UI store, so the list and the map cannot disagree.
+- Area shapes drawn as dashed "approximate extent" circles, never invented boundaries.
 
 ### Trip builder
 - Dates generate days; travellers, travel styles, budget tier and loyalty programmes are captured.
@@ -116,74 +96,15 @@ where things are?*
 
 ---
 
-## V1.3 — shipped: the origin becomes a first-class entity
-
-- **Meridian is no longer a Singapore product.** Eleven curated origin cities across five groups —
-  Singapore, 粤港澳大湾区, 长三角, 中国其他, 东南亚 — each with a list of airports, because one city
-  is not one airport.
-- **`OriginDestinationConnection` replaces the per-airport Singapore flight fields.** Whether a
-  route is non-stop is a property of an *(origin, destination)* pair; a boolean on the destination
-  airport could only ever describe one origin.
-- **Unknown stays unknown.** `directAvailable` is `boolean | null`, and `null` means we have no
-  data. Those pairs render 航班信息待确认 and show no duration at all — only a straight-line
-  distance, explicitly labelled as one.
-- **The map reorients itself.** Select 广州 and the origin marker, the viewport, the route arc,
-  every duration, the 直飞 filter and the preview card all follow — with no destination-specific
-  code.
-- **The origin persists** in its own store, so a user profile can replace localStorage later by
-  changing one file. Trips carry `originCityId`, with a migration for trips saved before origins
-  existed.
-
----
-
-## V1.2 — shipped: Chinese first, discovery, and research
-
-- **Simplified Chinese is the primary language.** A 546-key catalogue rather than scattered
-  strings; `zhCN` is authored first and `en` is typed against its key set, so a missing
-  translation fails the build. Proper nouns are stored twice and both are shown, because a
-  traveller reads 乌鲁瓦图神庙 and then types "Uluwatu Temple" into Grab.
-- **Bali went from 48 places to 145** — 46 restaurants, cafés, bars and beach clubs across seven
-  areas, and 51 bookable activities covering all 17 activity kinds.
-- **DO is a filter, not a list.** Eleven Chinese categories over an area row that only offers areas
-  holding something in the chosen category. 美食 + 长谷 narrows 49 restaurants to 7.
-- **The social-guide research pipeline.** A separate data layer with a review gate, deterministic
-  extraction, name matching that refuses to guess, and social signals phrased over our own corpus
-  — never as a popularity claim. Not a scraper: these platforms prohibit automated collection, so
-  the researcher pastes the text and the URL is kept as provenance.
-- **Coordinates come from OpenStreetMap**, not from a model. 94 of 100 new POIs resolved; the six
-  that did not are excluded from the map and say 位置未核实 rather than sitting at 0,0.
-
----
-
 ## V1.1 — depth over breadth
 
 The goal is to make the reference destination genuinely trustworthy and the others honest.
 
 - **Deep data for the remaining destinations, or a shorter list.** Take Phu Quoc, Da Nang / Hoi An
   and Siem Reap to Bali's depth; drop or clearly badge anything that cannot be.
-- **Real area boundary polygons** where an official one genuinely matches the travel area.
-  Where the travel area is inherently approximate — Canggu is three villages, "Nusa Dua" in
-  traveller usage includes Tanjung Benoa — the zone stays approximate and keeps saying so.
-- **Property photography for the sixteen Bali hotels that have none.** Wikimedia Commons and
-  Openverse do not cover them; this needs the properties' own media kits or a commercial image
-  provider, with the same verification bar (the photo must be provably of that property).
-- **Photography for the 97 new restaurants and activities.** They currently render the honest
-  no-photo state. Restaurant photography is largely absent from the CC sources this project uses,
-  so this likely needs a licensed provider — and the same rule applies: a photo of a specific
-  restaurant must be provably of that restaurant.
-- **Verified locations for the six unresolved Bali places.** They need local knowledge or an
-  operator's own website, not a better algorithm.
-- **A connection data provider.** 64 of 110 connections are curated route knowledge marked 待确认.
-  Every record already carries `source` and `verifiedAt`, so the work is a provider that populates
-  and refreshes them — not a schema change.
-- **Nearby-airport suggestions.** `nearbyOriginIds` is populated and surfaced; acting on it means
-  comparing a traveller's real options across Shenzhen, Hong Kong and Guangzhou.
-- **The origin on the itinerary.** A trip stores where it departs from, and the PLAN timeline still
-  starts at the destination airport. `出发 → 机场 → 酒店 → 景点 → 机场 → 返回` is the shape the
-  model supports and does not yet draw.
-- **Extraction that reads what guides actually are.** Most Xiaohongshu guides arrive as images.
-  Reading them means OCR the researcher runs and pastes, or a platform-permitted API — not a
-  scraper.
+- **Real area boundary polygons** from OpenStreetMap administrative data, replacing the dashed
+  radius circles.
+- **Curated photography**, licensed and attributed, used behind the map rather than instead of it.
 - **Opening hours and closure days on the timeline.** A day that ends at Uluwatu after the Kecak
   dance has sold out is an inefficient plan too.
 - **Weather and seasonality overlays** — surf season, monsoon timing, and the holiday calendar that
@@ -193,11 +114,46 @@ The goal is to make the reference destination genuinely trustworthy and the othe
 - **Shareable read-only itinerary** via a signed URL. A trip is already a self-contained JSON object.
 - **Multi-trip management UI** (list, rename, duplicate, archive) instead of only switching.
 - **Automated data validation in CI**: schema, coordinate bounds, duplicate ids, brand-registry
-  coverage, same-property-plotted-twice detection, entities outside their destination's map
-  bounds, and a "no price-like field" assertion. *(Shipped in V1; the remaining work is wiring
-  `npm run validate:data` and `npm run test:e2e` into CI.)*
+  coverage, and a "no price-like field" assertion.
 - **Accessibility audit** with a screen reader and keyboard-only pass; a written audit log.
 - **PWA shell** with offline map tiles for the downloaded destination.
+
+---
+
+## V1.2 — social guide import
+
+**Paste a travel guide and its places appear on the map.**
+
+- **The traveller pastes; Meridian never scrapes.** The link is kept as provenance and the text is
+  what the traveller supplies. No login, no CAPTCHA solving, no anti-bot evasion, and the interface
+  says so where the traveller would otherwise expect a fetch. A screenshot is still the format most
+  of these guides arrive in, and reading one is not something this iteration attempts.
+- **One place, however many spellings.** `La Brisa`, `La Brisa Bali` and `La Brisa Canggu` resolve
+  to one canonical record, so the guide never becomes a second place database. Confirming a name
+  teaches an alias, and the next import matches it without asking.
+- **A confidence band, never a number.** High preselects, medium asks, low does not guess. The
+  traveller is told what we think a name means, not how sure a model claims to be.
+- **The guide's words are labelled as the guide's.** Themes, dishes, warnings and times are shown as
+  source-derived, never as verified attributes of the place.
+- **Creating a place writes a private submission**, pending review, and never touches the canonical
+  dataset.
+- **The review is on the map.** Candidates are plotted as they are reviewed, and what is kept stays
+  plotted. The map is the answer, not a backdrop.
+- **Extraction sits behind a provider interface.** A deterministic rule-based extractor runs in the
+  browser by default; an LLM extractor calls `/api/extract`, which is the only place an API key
+  exists. A static deployment degrades to the deterministic extractor rather than breaking.
+
+Still open from this iteration:
+
+- **Screenshot and image import.** Most Xiaohongshu guides arrive as images. Reading them needs OCR
+  or a vision model, and it needs the same "the text came from you" contract.
+- **Video transcripts.** A YouTube or TikTok link could yield a transcript the traveller is entitled
+  to read; that is a fetch with a declared purpose, not a scrape, and it needs designing.
+- **Community corpus.** Imported guides are private. A reviewed, aggregated contribution flow is the
+  only honest path to "N guides mention this", and the split between 你的攻略 and 社区攻略 is already
+  in the data shape for it.
+- **Model-assisted matching for unmatched names** with the traveller confirming, rather than the
+  current exact/fuzzy matcher.
 
 ---
 
@@ -242,3 +198,11 @@ The goal is to make the reference destination genuinely trustworthy and the othe
   hand-off, not the product.
 - **Content marketing.** No listicles, no SEO articles, no hero banners. If it does not help someone
   understand where things are, it does not ship.
+- **Scraping social platforms.** No headless browsers, no logged-in sessions, no CAPTCHA solving, no
+  rotation of user agents. The platforms forbid it, it breaks monthly, and it would put a
+  traveller's own account at risk.
+- **A social network.** No feed, no following, no comments, no messaging, no creator profiles, no
+  monetisation of other people's guides. Meridian reads the text a traveller hands it and gives back
+  a map.
+- **Rehosting creator imagery or text.** A guide's photographs and prose belong to whoever made
+  them. Meridian keeps a link and the traveller's own paste, and reproduces neither.

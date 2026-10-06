@@ -982,50 +982,114 @@ export type SocialPlatform =
   | 'other';
 
 /**
- * The review state of an imported guide.
+ * Where an import's content came from.
  *
- * `unprocessed` → the URL is stored, nothing extracted yet.
- * `extracted`   → mentions pulled out, awaiting matching/verification.
- * `done`        → reviewed; its mentions are either accepted or dismissed.
+ * `unavailable` is a first-class outcome, not an error: most of these platforms
+ * cannot be read automatically, and the product says so rather than pretending
+ * the import worked.
  */
-export type SocialGuideStatus = 'unprocessed' | 'extracted' | 'done' | 'ignored';
+export type SourceAccessStatus =
+  /** The traveller pasted the text themselves. The normal case. */
+  | 'user_text'
+  /** A public page we could read without circumventing anything. */
+  | 'public_content_accessible'
+  /** We have the link and whatever the platform itself publishes, nothing more. */
+  | 'metadata_only'
+  /** Nothing could be retrieved. The URL is still stored as provenance. */
+  | 'unavailable';
 
-export interface SocialGuideSource {
+/** The lifecycle of one import, as the traveller experiences it. */
+export type SocialImportStatus =
+  | 'draft'
+  | 'processing'
+  | 'review_required'
+  | 'completed'
+  | 'failed';
+
+/**
+ * One imported guide.
+ *
+ * Was `SocialGuideSource`, authored for an internal researcher. It is now the
+ * traveller's own object: they paste a link or a piece of text, and this record
+ * owns the result. The research view reads the same type — a guide is a guide,
+ * whoever imported it, and the difference is `visibility`, not shape.
+ */
+export interface SocialImport {
   id: string;
+  /**
+   * Who this belongs to.
+   *
+   * There are no accounts yet, so this is a stable local profile id. It exists
+   * now because §27 of the brief is a privacy requirement, not a later concern:
+   * an import reflects private travel interests and must not silently become
+   * part of a shared corpus.
+   */
+  ownerProfileId: string;
+  /**
+   * `private` is the default and the only value the traveller's own flow writes.
+   * `community` is what a reviewed, aggregated contribution would become.
+   */
+  visibility: 'private' | 'community';
+
+  /** Set when the import was made while planning a destination. */
+  destinationId?: string;
+  tripId?: string;
+
   platform: SocialPlatform;
   /** Provenance. Kept even when the text had to be pasted by hand. */
-  url?: string;
+  sourceUrl?: string;
   title?: string;
   author?: string;
-  /** ISO timestamp. */
-  importedAt: string;
+
+  createdAt: string;
+  processedAt?: string;
+
+  status: SocialImportStatus;
+  sourceAccessStatus: SourceAccessStatus;
+
+  /** Bumped when the extractor changes, so old results can be re-derived. */
+  extractionVersion: string;
+  /**
+   * SHA-256 of the normalised input.
+   *
+   * Extraction costs money and the same guide is often pasted twice. A matching
+   * hash reuses the stored result instead of paying for it again.
+   */
+  contentHash?: string;
+
   userNotes?: string;
   /**
-   * Text the researcher supplied.
+   * Text the traveller supplied.
    *
-   * V1 does not scrape. The platforms this feature targets actively prohibit it,
-   * and circumventing their controls is not something this product does. Where
-   * automatic retrieval is not permitted, the researcher pastes what they read —
-   * and the URL stays attached as provenance.
+   * V1 does not scrape. These platforms actively prohibit it, and circumventing
+   * their controls is not something this product does. Where automatic retrieval
+   * is not permitted, the traveller pastes what they read — and the URL stays
+   * attached as provenance.
+   *
+   * Held privately to this import (§26) and deletable with it.
    */
-  rawText?: string;
-  status: SocialGuideStatus;
-  /** Set once extraction has run. */
-  extractedAt?: string;
+  userProvidedText?: string;
+  /** Short, non-copyrightable reason the import failed, when it did. */
+  failureReason?: string;
 }
 
-/** Where a mention sits in the review pipeline. */
+/**
+ * What we currently believe about a mention's relationship to a place.
+ *
+ * The brief's vocabulary (§8). Deliberately separate from `UserDecision`: the
+ * system says whether it found a place, the traveller says whether they want it.
+ * Collapsing the two made "we could not identify this" and "I do not want this"
+ * the same state, which they are not.
+ */
 export type MentionStatus =
-  /** Extracted, not yet matched to a canonical place. */
-  | 'pending'
-  /** Matched to an existing canonical place. Awaiting a human yes/no. */
+  /** Confidently matched to a canonical place. */
   | 'matched'
-  /** No confident match. A human must decide: new place, or nothing. */
-  | 'needs-review'
-  /** Accepted. May contribute to the place's social signals. */
-  | 'accepted'
-  /** Rejected — not a place, wrong place, or not useful. */
-  | 'dismissed';
+  /** Probably this place, but not confidently enough to decide alone. */
+  | 'possible_match'
+  /** No candidate cleared the confidence floor. */
+  | 'unmatched'
+  /** The traveller said this is not a place, or not this place. */
+  | 'rejected';
 
 export type RecommendationType =
   | 'restaurant'
@@ -1044,27 +1108,125 @@ export type RecommendationType =
 
 export type MentionSentiment = 'positive' | 'neutral' | 'mixed' | 'negative';
 
-export interface SocialMention {
+/** What the traveller decided about one extracted place. */
+export type UserDecision = 'save' | 'ignore' | 'pending';
+
+/**
+ * The confidence bands the interface speaks in.
+ *
+ * The brief's §13, and they map onto real behaviour: HIGH is preselected, MEDIUM
+ * asks, LOW does not guess. The numeric score stays for auditing; the UI never
+ * shows it.
+ */
+export type MatchBand = 'high' | 'medium' | 'low';
+
+export interface SocialPlaceMention {
   id: string;
-  sourceId: string;
+  importId: string;
   /** Exactly as it appeared in the guide, before any normalisation. */
   rawPlaceName: string;
+  /** The wider phrase it was found in — short, and never the whole post. */
+  rawText?: string;
   /** Cleaned for matching: lowercased, punctuation and suffixes stripped. */
   normalizedPlaceName: string;
+
+  /** What kind of place the surrounding text implies, when it implies one. */
+  categoryHint?: RecommendationType;
+  areaHint?: string;
+  /** Why the extractor believed this was a place, in one short line. */
+  extractedReason?: string;
+  /** Dishes, activities or specifics the guide named. */
+  extractedItems: string[];
+
+  /** Source-derived insight. NOT a verified attribute of the place. */
+  contextThemes: string[];
+  positiveThemes: string[];
+  warnings: string[];
+  bestTimeMentioned?: string;
+
   /** The canonical Meridian place this was matched to, if any. */
   matchedPlaceId?: string;
   /** How the match was decided, so a reviewer can audit it. */
   matchMethod?: 'exact' | 'alias' | 'fuzzy' | 'manual';
   /** 0–1. Below the confidence floor the mention is marked 需要确认. */
   matchConfidence?: number;
+  matchBand: MatchBand;
+
+  verificationStatus: MentionStatus;
+  userDecision: UserDecision;
+
+  /** Set when the traveller resolved this to a place they created. */
+  submittedPlaceId?: string;
+
+  createdAt: string;
+}
+
+/** Kept as the old name for the research view, which reads the same shape. */
+export type SocialMention = SocialPlaceMention;
+
+/**
+ * A canonical place the traveller has kept.
+ *
+ * Deliberately a REFERENCE, not a copy. The canonical `Place` stays the single
+ * source of truth for name, coordinates and photography; saving is a pointer
+ * plus provenance. Copying the record would create a second version of every
+ * saved place that drifts the moment the canonical one is corrected.
+ */
+export interface UserSavedPlace {
+  id: string;
+  ownerProfileId: string;
+  placeId: string;
+  destinationId: string;
+  /** Which import it came from, when it came from one. */
+  sourceImportId?: string;
+  savedAt: string;
+  /** The traveller's own note. Private to them. */
+  note?: string;
+}
+
+export type SubmissionStatus = 'pending_verification' | 'accepted' | 'rejected';
+
+/**
+ * A place a traveller says exists but Meridian does not hold.
+ *
+ * It is NEVER written into the canonical dataset. It lives here, pending review,
+ * so a wrong or duplicate submission cannot degrade the place data every other
+ * traveller sees.
+ */
+export interface UserPlaceSubmission {
+  id: string;
+  ownerProfileId: string;
+  destinationId: string;
+  name: string;
+  nameZh?: string;
   recommendationType: RecommendationType;
-  sentiment: MentionSentiment;
-  /** Short, paraphrased note. Never a copied post. */
-  extractedNotes?: string;
-  /** Dishes, activities or specifics the guide named. */
-  recommendedItems: string[];
-  areaHint?: string;
-  status: MentionStatus;
+  areaId?: string;
+  coordinates?: Coordinates;
+  /** Where the traveller heard about it. */
+  sourceImportId?: string;
+  sourceUrl?: string;
+  note?: string;
+  status: SubmissionStatus;
+  createdAt: string;
+}
+
+/**
+ * A name a guide used that we now know means a particular place.
+ *
+ * The learning loop from §31. "La Brisa Bali" resolving to La Brisa is knowledge
+ * worth keeping: it turns a medium-confidence guess into an exact hit next time,
+ * for this traveller and — once reviewed — for everyone.
+ */
+export interface PlaceAlias {
+  id: string;
+  alias: string;
+  normalizedAlias: string;
+  placeId: string;
+  source: 'user_confirmed' | 'reviewed' | 'imported';
+  /** 0–1. A user's own confirmation is 1. */
+  confidence: number;
+  /** Null when the alias came from a reviewed contribution. */
+  ownerProfileId?: string;
   createdAt: string;
 }
 

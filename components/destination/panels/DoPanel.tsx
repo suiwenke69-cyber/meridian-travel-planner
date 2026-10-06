@@ -1,9 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { Place } from '@/lib/types';
+import type { Hotel, Place } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useUiStore, type DoCategory } from '@/lib/store/ui-store';
+import { useImportUiStore } from '@/lib/store/import-ui';
+import { useSavedEntries } from '@/lib/research/saved';
+import { SavedPlacesList } from '../../social/SavedPlacesList';
 import { useTripStore } from '@/lib/store/trip-store';
 import { isRefInTrip } from '@/lib/trip';
 import { useT } from '@/lib/i18n/use-t';
@@ -37,6 +40,7 @@ export function DoPanel({
   areaNameById,
   focusedAreaId,
   onSelectPlace,
+  onSelectHotel,
   onHoverPlace,
   selectedPlaceId,
   onClearArea,
@@ -46,6 +50,7 @@ export function DoPanel({
   areaNameById: Map<string, string>;
   focusedAreaId: string | null;
   onSelectPlace: (place: Place) => void;
+  onSelectHotel: (hotel: Hotel) => void;
   onHoverPlace: (id: string | null) => void;
   selectedPlaceId: string | null;
   onClearArea: () => void;
@@ -55,14 +60,16 @@ export function DoPanel({
   const setDoCategory = useUiStore((s) => s.setDoCategory);
   const selectArea = useUiStore((s) => s.selectArea);
 
-  const trip = useTripStore((s) => {
-    const active = s.trips.find((t) => t.id === s.activeTripId);
-    if (active && active.destinationId === destinationId) return active;
-    return (
-      s.trips.filter((t) => t.destinationId === destinationId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
-      null
-    );
-  });
+  /*
+   * DO carries 我的收藏 as a scope rather than as a fifth tab.
+   *
+   * The four steps are the traveller's progression and adding a fifth would
+   * break it; saved places are places, and this is where places are browsed.
+   * The scope lives in the import store because the MAP has to narrow with it.
+   */
+  const placeScope = useImportUiStore((s) => s.placeScope);
+  const setPlaceScope = useImportUiStore((s) => s.setPlaceScope);
+  const { entries: savedEntries, danglingCount } = useSavedEntries(destinationId);
 
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -95,6 +102,58 @@ export function DoPanel({
 
   const areaLabel = focusedAreaId ? (areaNameById.get(focusedAreaId) ?? focusedAreaId) : null;
 
+  const trip = useTripStore((s) => {
+    const active = s.trips.find((t) => t.id === s.activeTripId);
+    if (active && active.destinationId === destinationId) return active;
+    return (
+      s.trips.filter((t) => t.destinationId === destinationId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
+      null
+    );
+  });
+
+  if (placeScope === 'saved') {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 gap-1 border-b border-line px-3 py-2" role="tablist">
+          {(
+            [
+              { id: 'all' as const, label: t('do.scopeAll') },
+              { id: 'saved' as const, label: t('do.scopeSaved') },
+            ]
+          ).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={placeScope === entry.id}
+              onClick={() => setPlaceScope(entry.id)}
+              data-testid={`do-scope-${entry.id}`}
+              className={cn(
+                'flex-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-colors duration-150',
+                placeScope === entry.id ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-black/[0.03] hover:text-ink-soft',
+              )}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <div className="min-h-0 flex-1">
+          <SavedPlacesList
+            destinationId={destinationId}
+            areaNameById={areaNameById}
+            entries={savedEntries}
+            danglingCount={danglingCount}
+            onSelectPlace={onSelectPlace}
+            onSelectHotel={onSelectHotel}
+            onHover={onHoverPlace}
+            selectedEntityId={selectedPlaceId}
+          />
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
@@ -102,6 +161,32 @@ export function DoPanel({
         <p className="mt-1 text-[12px] leading-relaxed text-muted">
           {areaLabel ? t('do.restaurantsIn', { area: areaLabel }) : t('do.subtitle')}
         </p>
+
+        <div className="mt-2.5 flex gap-1" role="tablist">
+          {(
+            [
+              { id: 'all' as const, label: t('do.scopeAll') },
+              { id: 'saved' as const, label: `${t('do.scopeSaved')} · ${savedEntries.length}` },
+            ]
+          ).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={placeScope === entry.id}
+              onClick={() => setPlaceScope(entry.id)}
+              data-testid={`do-scope-${entry.id}`}
+              className={cn(
+                'flex-1 rounded-lg border px-2 py-1.5 text-[12px] font-semibold transition-colors duration-150',
+                placeScope === entry.id
+                  ? 'border-accent/25 bg-accent-soft text-accent'
+                  : 'border-line bg-surface text-muted hover:border-line-strong hover:text-ink-soft',
+              )}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
 
         <div className="mt-2.5 flex flex-wrap gap-1" data-testid="do-categories">
           {DISCOVERY_CATEGORIES.map((entry) => {

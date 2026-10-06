@@ -970,3 +970,191 @@ unknown connections · 581 message keys.**
    engine, and inventing one would be worse than not having it.
 7. **The 97 Bali restaurants and activities still have no photography**, and six places still have
    no verified location. Both carried over unchanged from the previous pass.
+
+---
+
+# Iteration 6 — turning a saved guide into places on a map
+
+## 1. The core product moment, and what it rules out
+
+The brief for this pass was one sentence: *paste a travel guide, and its places appear on my map.*
+Almost every design decision below follows from taking that sentence literally.
+
+It rules out the obvious implementation. A guide arrives as a link to Xiaohongshu, a TikTok or a
+YouTube video, and the tempting move is to fetch it. That fails on three counts at once: the
+platforms' terms prohibit automated collection, an anti-bot arms race breaks monthly, and the format
+most of these guides actually take is a screenshot, which no amount of HTML parsing reads. Attempting
+it would also have put the traveller's own account in the path of a ban.
+
+So Meridian keeps the link as **provenance** and works on the text the traveller pastes. Because that
+is a real limitation rather than an implementation detail, the interface says it in words, in the
+place where a traveller would otherwise expect us to read the link:
+
+> 暂时无法直接读取这个平台的内容。你可以复制攻略文字到这里，Meridian 会继续帮你整理。
+
+That is §5 of the brief, and it is a piece of copy in the input panel rather than a line in a policy
+page. A limitation the user can act on belongs where the action is.
+
+## 2. The flow takes the panel, not the screen
+
+The first build of this flow was a modal. It was wrong for a reason that is easy to state and was
+easy to miss: the modal covered the map, so the places appeared behind a dialog. The product's whole
+promise is spatial, and the moment it pays off was hidden.
+
+The flow now takes over the destination's side panel — the same 400px rail the four tabs use on
+desktop, the same bottom sheet on mobile — and the map stays visible throughout. On a phone the sheet
+expands to full height when the flow opens, because reading a list of candidates is a full-height job
+and at the half snap the traveller had to discover by dragging that there was more to see.
+
+Candidates are plotted on the map as they are reviewed, and the camera moves to them when the review
+opens. There is no separate "preview" step, because reviewing *is* previewing.
+
+One bug here is worth recording, because it is the kind that passes every automated check that is not
+a real browser looking at a real map: the import preview was scoped to the `do` tab. Open the flow
+from EXPLORE — which is where the destination opens, so it is where most people are — and the review
+appeared over a map with nothing on it. The fix was to make an import review outrank the tab: while a
+review is open, the map draws that import's candidates and nothing else, because "the places from
+this guide" and "every restaurant in Canggu" on the same canvas answer neither question.
+
+## 3. Extraction behind an interface, so the key never ships
+
+Extraction is entity recognition, classification and one-line summarisation over text. That is a task
+a small cheap model does well, and it is also a task a deterministic rule-based extractor does
+adequately. Which one runs should be a deployment decision, not an architectural one.
+
+`lib/research/extractor.ts` defines one `GuideExtractor` interface and two implementations:
+
+| Provider | Runs where | Key | Behaviour |
+| --- | --- | --- | --- |
+| `deterministic` (default) | the browser | none | Dictionary, explicit patterns, constrained heuristic |
+| `llm` | server, via `/api/extract` | yes | Structured output from a chat model |
+
+The client never holds a credential. It posts to `/api/extract`, and that route is the single place
+`DEEPSEEK_API_KEY` or `OPENAI_API_KEY` is read — the same boundary `app/api/route/route.ts` already
+uses for routing keys. It does not fetch the source URL, and the system prompt it sends to the model
+says so explicitly.
+
+The static GitHub Pages build is where this decision earns its keep. There is no server there, so the
+route is not deployed at all; `NEXT_PUBLIC_GUIDE_EXTRACTOR` is unset, and the deterministic extractor
+runs. The feature degrades rather than breaking, and a key in the deployment environment cannot
+silently become a key in a JavaScript bundle — which was the one thing §29 said not to compromise on.
+
+## 4. Two extraction bugs, and why the second one only appeared after fixing the first
+
+**Every mention inherited its paragraph's themes.** `La Brisa` was classified as a temple and
+credited with a sunset it never had. The cause was that a segment's context held the parent *line*,
+so a three-sentence line gave every name in it the union of all three sentences' words. Segmenting to
+the sentence fixed the attribution.
+
+**And immediately broke extraction for a real venue.** `第二天在长谷吃了 Milk & Madu，早餐很好`
+names a restaurant without using a restaurant word, and the heuristic pass gates on a category
+keyword. The old, coarser context had accidentally contained one. A `VISIT_VERB` gate — 去了 / 吃了 /
+住了 / visited / ate at — restored it, and a comment in the code records why, because the next person
+to tighten that gate will hit the same wall.
+
+**A venue glued to its sentence was never found at all.** `晚上去了蓝房子酒吧` was captured by the CJK
+name pattern as one greedy run, 晚上去了蓝房子, which the function-word filter then discarded — and
+because the scan resumed past the match, 蓝房子 was never tried. Writing "去了X酒吧" is the common
+case, not the edge case, so the capture is now trimmed back to the last function word rather than
+thrown away. This one was found by writing a test for alias learning and watching it fail for a
+reason that had nothing to do with aliases.
+
+## 5. Matching: one place, however many spellings
+
+The brief called duplicate prevention critical, and it is: `La Brisa`, `La Brisa Bali` and
+`La Brisa Canggu` must not become three canonical beach clubs. The architecture answers it in the
+data shape rather than in a cleanup pass. A mention resolves to a **canonical place id**; saved places
+store **references** to those ids, not copies; saving is idempotent. A guide mentioning the same place
+twice is one place, and a place saved from three guides is one entry carrying three references.
+
+Matching compares two keys, because one is not enough. The loose key strips locational and categorical
+noise; the strict key only normalises punctuation and accents. Stripping noise is right for
+`Warung Babi Guling Ibu Oka` and wrong for `Uluwatu Temple`, where 神庙 is part of the name. Two
+candidates scoring within 0.05 of each other are treated as ambiguous and matched to neither.
+
+Above the confidence floor the interface speaks in bands, never numbers: high preselects, medium asks,
+low does not guess. And for a name nothing matches there is deliberately **no** "accept our best
+guess" button. A wrong automatic answer is exactly how a duplicate canonical place is born, so the
+traveller either points at the place Meridian already holds or creates one — and creating one is a
+private submission, not a place.
+
+## 6. What a created place actually is
+
+`UserPlaceSubmission`, in `pending_verification`, owned by a local profile id, never written into the
+canonical registry. It appears in 我的收藏 in its own visual register — dashed border, no photograph,
+a 待核实 badge — because showing it with the card a dataset place gets would launder an unverified
+submission into something that looks verified.
+
+It cannot be added to an itinerary until the traveller has placed it on the map, and that is not a
+limitation imposed for its own sake: there is no honest coordinate for a place nobody has located, and
+a stop that sits nowhere is worse than a stop that is missing.
+
+## 7. Honesty, restated for this feature
+
+Four rules, each enforced in the type system or the validator rather than in a style guide:
+
+1. **A guide's words are the guide's words.** Themes, dishes, warnings and times render under
+   以下内容来自攻略，不是 Meridian 核实过的事实。
+2. **No confidence number is ever rendered.** Bands are words. The raw score stays in the store for
+   the internal view and a reviewer's audit.
+3. **No popularity claim.** Signals are aggregates over the traveller's own corpus —
+   在 N 份已收录攻略中被提及 — with the caveat 不代表全网热度.
+4. **The two corpora are never summed.** 你的攻略 and 社区攻略 are different claims about different
+   bodies of text, and adding them would produce a number that means nothing. Today 社区攻略 is
+   legitimately zero; the field exists because the honest answer is a zero, not a merge.
+
+Copyright follows the same logic. Meridian rehosts neither the guide's photographs nor its prose: it
+keeps a link, the traveller's own paste, and at most one short sentence as the reason a name was
+extracted. Deleting an import deletes the text it held.
+
+## 8. A React bug that only a browser could find
+
+我的收藏 was added to DO as an early `return` placed before the component's remaining hooks. Switching
+scope changed the number of hooks between renders, and React refused to render the panel at all.
+
+The type checker was clean. The 103-check behavioural suite was clean. It was the browser suite that
+caught it, in the one place it could be caught: a real render that changed a real filter. This is the
+argument for keeping an end-to-end suite that fails on console errors even when every DOM assertion
+passes — the panel was still visibly broken while every assertion about its content was true.
+
+## 9. Verification
+
+- `npx tsc --noEmit` — clean.
+- `npm run validate:data` — passes, including a check driven by the shipped sample guide: extraction
+  must produce a known count of credible mentions, every matched id must exist, and no mention may be
+  duplicated.
+- `npm run test:social` — **103/103**. Chinese, English and mixed prose; duplicate and partial names;
+  ambiguity; alias learning; unmatched names; saving; idempotence; creating a place; re-import
+  caching; deletion; every failure code; hotel matching. All of it runs against controlled sample
+  text, never a live platform, because the product does not fetch them.
+- `npm run test:e2e` — **148/148**, and zero console errors, page errors or failed requests. New
+  coverage: the entry point, the stated platform limitation, the review, the candidates being plotted
+  on the map, saving, 我的收藏, the map still showing saved places, and the unreadable-link failure
+  path. The two stale steps that referenced a deleted status vocabulary were rewritten rather than
+  deleted, since what they were checking — that an internal decision does not become a public claim —
+  still matters.
+- `npm run build` and `npm run build:static` — both pass. The static export stashes `app/api`, so
+  `/api/extract` is absent from the published bundle, which is the point.
+- The message catalogue is **702 keys**, with `en` typed as `Record<keyof typeof zhCN, string>`, so a
+  missing English translation is a compile error rather than a silent Chinese string in an English
+  interface.
+
+## Known limitations after this pass
+
+1. **Guide import reads text, not images.** Most Xiaohongshu guides arrive as screenshots. Reading
+   them needs OCR or a vision model, and it needs the same "the text came from you" contract. Until
+   then the traveller retypes or copies the caption.
+2. **No video transcripts.** A YouTube or TikTok link could yield a transcript the traveller is
+   entitled to read, and that is a fetch with a declared purpose rather than a scrape. It is
+   undelivered here because the legal and product framing needs designing, not because it is hard.
+3. **The default extractor is rule-based.** It finds names it recognises and names sitting next to a
+   category keyword. It does not resolve pronouns, follow a link inside the guide, or read a
+   handwriting-style screenshot. An unrecognised name is reported as unmatched rather than guessed.
+4. **No shared corpus.** Imported guides are private, so 社区攻略 counts are zero and every signal
+   reads 你的攻略. A reviewed, aggregated contribution flow is the only honest path to a real
+   community count, and the split already exists in the data shape for it.
+5. **`/api/extract` is untested against a live provider.** The route compiles, is excluded from the
+   static export, and reads its key server-side, but a real DeepSeek or OpenAI call has not been
+   made from this repository, so the prompt's output shape is verified only against its own contract.
+6. **Saved places are per-browser.** Like trips and the origin, they live in `localStorage`. Moving to
+   accounts replaces the persist middleware, not the components.
