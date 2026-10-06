@@ -528,3 +528,250 @@ thing:
 7. **Only Bali is deep.** The other nine destinations are selectable and architecturally complete;
    they are not yet good enough to plan a real trip from.
 8. **No backend, no accounts.** Trips live in `localStorage` on one browser.
+
+---
+
+# Iteration 4 — Chinese first, real restaurant discovery, and a research pipeline
+
+The brief for this pass had three goals and one constraint: make Simplified Chinese the
+primary product language, make Bali restaurant and activity discovery actually useful, build a
+structured pipeline for importing social-media travel guides — and do not redesign the
+architecture again, do not expand to another destination, and do not build scrapers.
+
+## 1. Localization, as architecture rather than strings
+
+The requirement was explicit: "Create localization infrastructure rather than scattering Chinese
+strings through components." So there is a catalogue, not a find-and-replace.
+
+**`lib/i18n/messages.ts`** holds **546 keys**. `zhCN` is authored first and is the source of
+truth; `en` is typed as `Record<keyof typeof zhCN, string>`, which makes a missing or misspelled
+translation a **compile error** rather than a raw key rendered into the interface. That one
+typing decision has caught more mistakes during this pass than any test.
+
+**The Chinese is written, not translated.** This is the part that determines whether the product
+reads as Chinese or as an English product wearing Chinese. Where the English says "Bali packs a
+beach town, a surf coast, a cultural highland and a resort enclave into an island you can cross
+in a day", the Chinese is two short clauses. The English long-form copy still exists for the `en`
+locale; the Chinese is a different text for the same reader.
+
+**Proper nouns are stored twice, and both are shown.** `nameZh` sits beside the canonical name on
+places, hotels, areas and destinations. The rule is not "translate the name" — it is that a
+traveller reads 乌鲁瓦图神庙 and then needs to type "Uluwatu Temple" into Grab. A card that showed
+only one of the two would fail at one of those two jobs. So 乌鲁瓦图神庙 is followed by
+Uluwatu Temple, and every restaurant keeps its Latin name because that is what the map apps know.
+
+`nameZh` is omitted wherever a Chinese name is not genuinely in use. Only 29 of 145 places carry
+one. `The Stones Hotel`, `Umana`, `Betelnut Café` and the rest keep their Latin names, because an
+invented transliteration is a name the reader cannot search for — strictly worse than the English.
+
+**Chinese copy lives in an overlay module**, `lib/data/zh/bali-zh.ts`, merged by the registry. The
+hand-verified geography files — coordinates, sources, `coordNote`s — are never touched by a
+translation pass, and the Chinese can be reviewed on its own without diffing thousands of lines of
+English.
+
+**Where the locale lives.** In the persisted UI store, not a cookie. The site is statically
+exported to GitHub Pages, so no route may read a request header. Server and first client render
+both use the default; a stored preference is applied after rehydration. Because rehydration
+happens in an effect, the first client render matches the server exactly and there is no hydration
+mismatch.
+
+**One thing had to move.** `message()` was originally in the same module as the React bindings,
+which is marked `'use client'` — and the root layout's `metadata` is a server component that needs
+it. Every page 500'd. It now lives in the pure module and is re-exported for convenience.
+
+## 2. The transport rationale had to stop being a sentence
+
+`recommend.ts` used to build its explanation by concatenating around a number:
+
+```ts
+rationale: `About ${km.toFixed(1)} km by ${basis}. A ride-hailing car is cheapest…`
+```
+
+That cannot be rendered well in a second language — the clause order, the measure word, the way a
+distance is expressed are all English. It now returns a **rule id and its numbers**
+(`rationaleKey: 'short-hop'`, `rationaleParams: { km, measured }`) and the copy lives in the
+catalogue. This is the difference between a localized product and an English product with
+translated labels.
+
+The English sentence is still emitted alongside for the `en` locale and for logging.
+
+## 3. Restaurant and activity discovery
+
+Bali went from **48 places to 145**.
+
+| | count |
+|---|---|
+| Restaurants, cafés, bars and beach clubs | 46 |
+| Bookable activities and operators | 51 |
+| Original geography (temples, beaches, waterfalls, warungs) | 48 |
+
+Restaurants span Seminyak (8), Canggu (8), Ubud (8), Uluwatu (7), Nusa Dua (5), Sanur (5) and
+Jimbaran (5). Activities cover all 17 activity kinds, from surf schools and dive centres to
+cooking classes, ATV operators, spa and yoga studios.
+
+**The DO filter was rebuilt around a shared vocabulary.** `lib/data/place-taxonomy.ts` now holds
+the category ids, cuisine ids, "recommended for" ids and activity kinds, and three consumers read
+it: the DO chip row, the map's marker set, and the research matcher. Previously the category
+matching was inferred from a single `markerLayer` enum, which lost most of the truth — a beach
+club is genuinely a beach club *and* nightlife *and* a restaurant. Each place now declares
+`discovery` ids explicitly.
+
+The category row is Chinese and has eleven entries: 精选 · 美食 · 咖啡 · Beach Club · 海滩 · 自然 ·
+文化 · 夜生活 · 水上活动 · Wellness · 购物. Underneath it is an **area row** listing only the areas
+that actually hold something in the selected category, with counts. 美食 + 长谷 narrows 49
+restaurants to 7. Both filters exist because they answer different questions: the category is
+"what do I feel like", the area is "where am I willing to drive".
+
+## 4. Coordinates come from a map, not from a model
+
+The datasets were authored by **name**, not by latitude. Asking a language model for coordinates
+produces plausible numbers that are wrong often enough to matter, and a pin 400 m off in Canggu
+puts a traveller on the wrong side of a rice field.
+
+So `scripts/geocode-pois.mjs` resolves them against **Nominatim**, and every resolved record keeps
+the OpenStreetMap element it came from in its `coordNote`. Anything outside Bali, or more than
+15 km from the area it claims to be in, is rejected and reported for a human.
+
+**94 of 100 resolved.** Six did not — a surf school, a yoga studio, a water-sports operator, a
+spa, a thalasso centre and a dive centre, none of which are in OSM. Those six keep
+`confidence: 'demo'` and **are excluded from the map and cannot join an itinerary**. They still
+appear in the DO list, where their card says 位置未核实. A pin at 0,0, or a route that measures
+8,000 km to dinner, would be worse than an honest blank.
+
+Two bugs in this script are worth recording, because both looked like success:
+
+- The **query shape** mattered more than anything else. Nominatim returns nothing for
+  `Goa Gajah (Elephant Cave)` and the temple for `Goa Gajah`; nothing for `Betelnut Café` and the
+  café for `Betelnut Cafe`. The first version used one shape and resolved 23 of 100.
+- The **write-back silently did nothing** for two runs. It recorded each entry's character offset
+  in the original file and then did index surgery on a mutating string; the offsets and the output
+  drifted apart, and it reported "11 resolved" while leaving every placeholder in place. It now
+  patches by `id → placeholder`, which is idempotent and cannot drift.
+
+## 5. The research pipeline
+
+A **separate data layer**. Production POI data is curated and verifiable; a social guide is a
+discovery signal — someone said something about somewhere. Merging them would let an unverified
+mention become a published place, which is the exact failure this separation exists to prevent.
+
+**What it is not: a scraper.** Xiaohongshu, Douyin, TikTok and Instagram prohibit automated
+collection, and circumventing those controls is not something this product does. V1 takes a URL
+for provenance and the text the researcher pastes. The interface says so in words:
+
+> 我们不抓取这些平台的内容。请把你看到的有用文字粘过来，链接会作为来源保留。
+
+**Extraction runs in three passes, in order of trust.** A dictionary pass scans the text for names
+already in the dataset, longest-first so "Finns Beach Club" wins over "Finns". A pattern pass reads
+the structures guides actually use (`店名：`, `📍`, `1.`, `「」`). A heuristic pass finds capitalised
+Latin runs and Chinese runs next to a category keyword.
+
+The first version of the heuristic pass produced **46 mentions for one sample guide, most of them
+junk** — 早餐去了, 必点, 牛油果吐司. The Chinese rule matched any 2–10 character run, which is every
+phrase in the language. It now only captures a run immediately followed by a venue noun
+(咖啡, 餐厅, 海滩俱乐部…), and rejects runs containing function words. The same guide now yields
+**11 mentions, all of them real venues.**
+
+**Matching refuses to guess.** A name is reduced to two keys: a *loose* one with locational and
+categorical noise stripped (`La Brisa Beach Club, Canggu` → `brisa`) and a *strict* one with only
+punctuation and accents folded. The strict key exists because noise stripping is destructive on
+names that legitimately contain a region word — reducing `Uluwatu Temple` to `temple` made it
+unmatchable against its own canonical record.
+
+Below a confidence of 0.55 the mention is marked 需要确认 and a human decides. The floor was set
+against a real failure: "Old Man's" and "Old Man" score ~0.9, while "La Brisa" and "La Favela"
+score ~0.34 — a lower floor started pairing them.
+
+**Nothing is published automatically.** A mention moves 待处理 → 已匹配/待验证 → 已收录 by human
+action, and the traveller only ever sees an aggregate over accepted mentions.
+
+## 6. The honesty rule for social signals
+
+The brief was specific: never claim 最热门 or 98% 推荐 unless a real methodology supports it.
+
+So the card says **在 12 份已收录攻略中被提及** — a statement about our own corpus, which is
+checkable — and carries the caveat 来自你收录的攻略，只作为参考，不代表全网热度. There is no
+popularity ranking anywhere in the product.
+
+`frequentlyMentioned` is a genuine frequency count, and the bar is two: one guide naming a dish is
+an anecdote, two is a pattern. Themes are derived from recurring keywords, and only when they
+recur.
+
+A fresh install shows **no signals at all**, because there are no imported guides. That is the
+correct behaviour: the alternative would be to seed fake research. The inbox offers a 载入示例文本
+button whose sample is written for this product, and it is labelled as a demonstration rather than
+a real guide.
+
+## 7. Bugs this pass surfaced
+
+Beyond the two in the geocoder and the three in localization:
+
+1. **The review queue was always empty.** The 待处理 tab counted unprocessed *sources* while
+   filtering that tab by mention status `pending` — a status extraction never assigns. The
+   reviewer opened the inbox and saw nothing to do.
+2. **Every card silently lost its 攻略参考 block.** Place cards read signals from the research
+   store, and `skipHydration` means that store reads nothing until asked. It was hydrated on
+   `/research` and nowhere else, so the destination page started empty every time.
+3. **Three beach clubs were in the product twice.** The restaurant and activity datasets were
+   authored independently and both included La Brisa, The Lawn and Sundays. The new canonical
+   identity check caught all three — this is precisely the duplicate problem the brief describes,
+   found by the rule written for it.
+4. **`message()` in a `'use client'` module** 500'd every page, because the root layout's metadata
+   is server-rendered.
+5. **Area names were English under a Chinese interface.** The `areaNameById` map that every panel
+   labels its rows with was built from the canonical name.
+6. **The itinerary lost the Chinese name.** `itemFromPlace` stored only `name`, so a trip built
+   from a Chinese card rendered in English. `ItineraryItem` now carries both, which also means an
+   itinerary still reads correctly after the traveller switches language.
+
+## 8. Verification
+
+**98 of 98 checks pass** across 24 steps, with 0 console errors, 0 page errors and 0 failed
+requests. Four steps are new this pass:
+
+- **Chinese is the product language, and English names stay searchable** — asserts the four tabs
+  read 探索/住宿/游玩/行程, that a place card carries a Latin proper noun alongside Chinese, and
+  that switching to `en` and back actually relabels the chrome both ways.
+- **DO filters by Chinese category and by area, together** — asserts eleven Chinese categories
+  leading with 精选, that 美食 lists 20+ restaurants, that an area row is offered, and that
+  美食 + 长谷 narrows it.
+- **The research inbox imports a guide, extracts places and gates publication** — pastes a URL and
+  text, asserts the platform is detected, that 8+ places are extracted, that known places match and
+  unknown ones are flagged, and that 已收录 starts empty until a human accepts.
+- **An accepted mention reaches the traveller as an aggregate signal** — asserts the count is
+  phrased over our own corpus, that **no popularity claim appears**, and that the provenance
+  caveat is present.
+
+`npm run validate:data` gained four rule groups, all of which fired during this pass:
+
+- **Canonical identity**: two places in one destination whose names normalise to the same thing.
+  This is the La Brisa rule, and it caught the three duplicated beach clubs.
+- **Unresolved coordinates must be marked `demo`**, so the map and the itinerary can exclude them,
+  and a `0,0` record claiming `verified` is an error.
+- **Taxonomy ids used by data must exist.** A typo here removes a place from a category silently —
+  it simply never appears under 美食, and nothing errors.
+- **The research pipeline must behave on the shipped sample**: no matched id that does not exist,
+  no duplicate mentions, and a mention count low enough to prove the heuristic pass is not matching
+  prose.
+
+## Known limitations after this pass
+
+1. **Six Bali places have no verified location.** They are readable but not plannable, and their
+   cards say so. They need a human with local knowledge, or an operator website, not a better
+   algorithm.
+2. **The 97 new places have no photography yet.** The image pipeline covers the original 48 places
+   and all 15 areas; restaurants and activity operators are not in it. Their cards render the
+   honest no-photo state, and borrowing an area photo for a specific restaurant is exactly what
+   this project refuses to do.
+3. **Social signals are empty on a fresh install.** By design — they come only from guides the
+   researcher imports. There is no seeded research, because seeding it would be inventing it.
+4. **Extraction is deterministic and therefore literal.** It finds names against the catalogue and
+   near category keywords. It does not resolve pronouns, follow an embedded map link, or read a
+   screenshot of a Xiaohongshu post — which is the real format most of these guides arrive in.
+5. **A guide's text is pasted by hand**, because fetching it automatically is not permitted. The URL
+   is kept as provenance, but there is no way to verify that the pasted text matches it.
+6. **The taxonomy is Bali-shaped.** Cuisines, activity kinds and "recommended for" ids were chosen
+   for this island; another destination will need additions.
+7. **Place names in Chinese are only as good as usage.** 29 of 145 carry one. The rest are Latin
+   because that is what people actually write.
+8. **Traffic is still not modelled**, photography is still Wikimedia-grade, and only Bali is deep —
+   all unchanged from the previous pass.

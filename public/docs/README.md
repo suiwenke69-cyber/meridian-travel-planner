@@ -459,6 +459,56 @@ domain has no such restriction.
 
 ---
 
+## Language
+
+**Simplified Chinese is the primary product language.** English is available and the
+product is fully usable in it.
+
+The localization is an architecture, not a find-and-replace. `lib/i18n/messages.ts` holds
+546 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
+which makes a missing or misspelled translation a **compile error** rather than a raw key
+in the interface.
+
+Three decisions worth knowing:
+
+- **The Chinese is written, not translated.** It is a different text serving the same
+  reader: shorter, direct, no marketing register. The English long-form copy is still
+  there for the `en` locale.
+- **Proper nouns are stored twice and both are shown.** A traveller reads 乌鲁瓦图神庙 and
+  then needs to type "Uluwatu Temple" into Grab. Cards show both, and every restaurant
+  keeps its Latin name because that is what the map apps recognise. `nameZh` is omitted
+  where no Chinese name is genuinely in use — 29 of 145 Bali places carry one.
+- **Chinese copy lives in an overlay** (`lib/data/zh/bali-zh.ts`), merged by the registry.
+  The hand-verified geography files — coordinates, sources, notes — are never touched by a
+  translation pass.
+
+The locale lives in the persisted UI store rather than a cookie, because the site is
+statically exported and must not read request state.
+
+## Restaurants, activities and the research pipeline
+
+Bali went from **48 places to 145**: 46 restaurants, cafés, bars and beach clubs across
+Seminyak, Canggu, Ubud, Uluwatu, Nusa Dua, Sanur and Jimbaran, and 51 bookable activities
+covering all 17 activity kinds.
+
+DO is a filter rather than a list: eleven Chinese categories over an area row that only
+offers areas holding something in the chosen category. 美食 + 长谷 narrows 49 restaurants
+to 7.
+
+`/research` is an internal route for turning social travel guides into verifiable places.
+**It is not a scraper.** Xiaohongshu, Douyin, TikTok and Instagram prohibit automated
+collection, so the researcher supplies the URL for provenance and pastes the text.
+Extraction runs in three passes — dictionary, explicit patterns, then a constrained
+heuristic — and matching refuses to guess: below 0.55 confidence a mention is marked
+需要确认 and a human decides.
+
+Nothing reaches a traveller until it has been accepted, and what reaches them is an
+aggregate over accepted mentions — 在 N 份已收录攻略中被提及 — never a popularity claim.
+A fresh install shows no signals at all, because there is no imported research to show.
+
+
+---
+
 ## 10. Recommended next five improvements
 
 1. **Take Bali to full depth on the other nine destinations** — or trim the destination list to the

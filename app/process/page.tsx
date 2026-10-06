@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Build notes',
+  title: '制作过程',
   description:
     'How Meridian was built: stack decisions, the basemap problem, the bugs testing caught, and what is deliberately missing.',
 };
@@ -54,6 +54,36 @@ const SCREENSHOTS: Array<{ file: string; title: string; body: string }> = [
     file: '08-map-markers.jpg',
     title: 'Marker system',
     body: 'Category markers carry a shape, a glyph and a label — never colour alone. Marriott is a rounded square with an M, Hilton a circle with an H. Clusters are styled to belong to the map.',
+  },
+  {
+    file: '31-zh-home.jpg',
+    title: '中文是主语言',
+    body: '产品语言是简体中文。这一页的每一个字都来自 lib/i18n 的 546 条词条——zhCN 先写，en 按它的键集做类型约束，所以漏翻一个键是编译错误，而不是界面上冒出一串 key。地名双语并列：读的是"巴厘岛"，搜索时用的是 Bali。',
+  },
+  {
+    file: '32-zh-explore.jpg',
+    title: '探索：先看区域，再看地图',
+    body: '区域范围是根据该区自己的酒店和景点坐标推出来的凸包——长谷是沿海长条，乌鲁瓦图是悬崖线，而不是一个半径圆。虚线是制图学里"近似"的通用符号。地图一次只画一个范围：九个住宿区，或者六个一日游区域。',
+  },
+  {
+    file: '33-zh-stay.jpg',
+    title: '住宿：有照片的排前面',
+    body: '巴厘岛 20 家万豪与希尔顿酒店。有实拍照片的排在前面——第一屏全是空占位对用户很不友好。价格只显示定位档位，从不显示房价，每个档位都写明判断依据。',
+  },
+  {
+    file: '34-zh-do-food-canggu.jpg',
+    title: '游玩：类别 + 区域，两个筛选一起用',
+    body: '十一个中文类别，下面是区域行——只列出当前类别下真的有内容的区域，并带数量。"美食 + 长谷"把 49 家餐厅收敛到 7 家。两个筛选回答的是不同问题：类别是"我想吃什么"，区域是"我愿意开多远"。',
+  },
+  {
+    file: '30-zh-research-inbox.jpg',
+    title: '攻略研究：把攻略变成可核实的地点',
+    body: '这是一个独立的内部数据层。我们不抓取小红书、抖音、TikTok 的内容——这些平台禁止自动采集，绕过它们的限制不是这个产品会做的事。所以留下链接作为来源，正文由研究者粘贴，界面里直接这样写着。抽取分三轮：先按语料库匹配已知店名，再读"店名：""📍""1."这些攻略真正常用的写法，最后才用受限的启发式。',
+  },
+  {
+    file: '36-zh-plan-transport.jpg',
+    title: '行程：餐厅也是行程的一部分',
+    body: '餐厅和活动都能加进行程，交通段在每一对停留点之间。模式、实测时长、实测距离在一行，下面写理由和数据来源徽章。没有取到路线的一段就写"暂无路线数据"，整天的时间标记为"约"——不会凭空给一个数字。',
   },
   {
     file: '20-explore.jpg',
@@ -181,13 +211,14 @@ export default function ProcessPage() {
     <main className="min-h-screen bg-paper">
       <div className="mx-auto max-w-[880px] px-5 py-12 sm:px-8 sm:py-16">
         <header className="border-b border-line pb-8">
-          <p className="label-caps">Build notes</p>
+          <p className="label-caps">制作过程</p>
           <h1 className="mt-3 text-[34px] font-semibold leading-[1.1] tracking-[-0.02em] sm:text-[42px]">
             Meridian
           </h1>
           <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-soft">
-            A map-first Southeast Asia travel planner for travellers departing from Singapore. V1 is
-            working end to end and holds no live data — deliberately.
+            从新加坡出发的东南亚地图行程助手。V1 已经端到端跑通，并且刻意不接入任何实时数据——
+            没有实时房价、没有实时机票。地点的坐标来自 OpenStreetMap 或经人工核实，拿不到数据的
+            时候会明说，而不是编一个看起来合理的数字。
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/" className="btn-primary btn-xs">

@@ -492,14 +492,24 @@ await step('15. Every consecutive stop gets a transport leg', async () => {
   );
   check('the leg explains the recommendation', legText.length > 60);
 
-  const measured = /OSRM road route|routing engine/.test(legText);
-  const unavailable = /Route unavailable/i.test(legText);
-  check('the leg declares where its numbers came from', measured || unavailable, measured ? 'routing engine named' : 'declared unavailable');
-  if (measured) {
-    check('a measured leg shows a distance and a duration', /≈\d+\s*(min|h)/.test(legText) && /\d+(\.\d+)?\s*(km|m)\b/.test(legText), firstMatch(legText, /≈[^\n]*/));
-  }
-  if (unavailable) {
-    check('an unavailable leg does not print a fabricated duration', !/≈\d+\s*min/.test(legText));
+  /*
+   * Read the leg's own claim about its numbers from the element rather than from
+   * the copy. The badge is Chinese now, and an assertion tied to the English
+   * words "routing engine" would fail on a translation rather than on a defect.
+   */
+  const legMeta = await page.locator('[data-testid^="transport-leg-"]').first().evaluate((el) => ({
+    source: el.getAttribute('data-source'),
+    measured: el.getAttribute('data-measured') === 'true',
+  }));
+  check(
+    'the leg declares where its numbers came from',
+    legMeta.source === 'routing-engine' || legMeta.source === 'unavailable',
+    `source=${legMeta.source}`,
+  );
+  if (legMeta.source === 'routing-engine') {
+    check('a measured leg shows a distance and a duration', legMeta.measured && /≈[\d.]+\s*(分钟|min|h|小时)/.test(legText), firstMatch(legText, /≈[^\n]*/));
+  } else {
+    check('an unavailable leg does not print a fabricated duration', !/≈\s*\d/.test(legText), firstMatch(legText, /暂无[^\n]*/));
   }
   await page.screenshot({ path: join(ARTIFACTS, '11-transport-legs.png') });
 });

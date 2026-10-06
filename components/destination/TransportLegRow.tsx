@@ -37,7 +37,21 @@ export function TransportLegRow({
   const t = useT();
 
   return (
-    <div className="relative flex gap-2 pl-[52px] pr-1" data-testid={`transport-leg-${leg.id}`}>
+    <div
+      className="relative flex gap-2 pl-[52px] pr-1"
+      data-testid={`transport-leg-${leg.id}`}
+      /*
+       * The data source as machine-readable state.
+       *
+       * The visible badge is Chinese, so a test that matched the English words
+       * "routing engine" broke the moment the product language changed. What the
+       * leg claims about its own numbers is a fact about the data, not about the
+       * copy, and it belongs on the element.
+       */
+      data-source={leg.source}
+      data-confidence={leg.confidence}
+      data-measured={leg.distanceMeters != null && leg.durationSeconds != null ? 'true' : 'false'}
+    >
       {/* Connector rail, aligned with the timeline column. */}
       <div className="absolute left-[26px] top-0 flex h-full w-4 flex-col items-center" aria-hidden="true">
         <span className={cn('w-px flex-1', unavailable ? 'bg-line-strong' : 'bg-accent/30')} />

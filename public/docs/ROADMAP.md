@@ -116,6 +116,25 @@ where things are?*
 
 ---
 
+## V1.2 — shipped: Chinese first, discovery, and research
+
+- **Simplified Chinese is the primary language.** A 546-key catalogue rather than scattered
+  strings; `zhCN` is authored first and `en` is typed against its key set, so a missing
+  translation fails the build. Proper nouns are stored twice and both are shown, because a
+  traveller reads 乌鲁瓦图神庙 and then types "Uluwatu Temple" into Grab.
+- **Bali went from 48 places to 145** — 46 restaurants, cafés, bars and beach clubs across seven
+  areas, and 51 bookable activities covering all 17 activity kinds.
+- **DO is a filter, not a list.** Eleven Chinese categories over an area row that only offers areas
+  holding something in the chosen category. 美食 + 长谷 narrows 49 restaurants to 7.
+- **The social-guide research pipeline.** A separate data layer with a review gate, deterministic
+  extraction, name matching that refuses to guess, and social signals phrased over our own corpus
+  — never as a popularity claim. Not a scraper: these platforms prohibit automated collection, so
+  the researcher pastes the text and the URL is kept as provenance.
+- **Coordinates come from OpenStreetMap**, not from a model. 94 of 100 new POIs resolved; the six
+  that did not are excluded from the map and say 位置未核实 rather than sitting at 0,0.
+
+---
+
 ## V1.1 — depth over breadth
 
 The goal is to make the reference destination genuinely trustworthy and the others honest.
@@ -128,6 +147,15 @@ The goal is to make the reference destination genuinely trustworthy and the othe
 - **Property photography for the sixteen Bali hotels that have none.** Wikimedia Commons and
   Openverse do not cover them; this needs the properties' own media kits or a commercial image
   provider, with the same verification bar (the photo must be provably of that property).
+- **Photography for the 97 new restaurants and activities.** They currently render the honest
+  no-photo state. Restaurant photography is largely absent from the CC sources this project uses,
+  so this likely needs a licensed provider — and the same rule applies: a photo of a specific
+  restaurant must be provably of that restaurant.
+- **Verified locations for the six unresolved Bali places.** They need local knowledge or an
+  operator's own website, not a better algorithm.
+- **Extraction that reads what guides actually are.** Most Xiaohongshu guides arrive as images.
+  Reading them means OCR the researcher runs and pastes, or a platform-permitted API — not a
+  scraper.
 - **Opening hours and closure days on the timeline.** A day that ends at Uluwatu after the Kecak
   dance has sold out is an inefficient plan too.
 - **Weather and seasonality overlays** — surf season, monsoon timing, and the holiday calendar that
