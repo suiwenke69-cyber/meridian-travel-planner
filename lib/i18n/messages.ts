@@ -672,7 +672,7 @@ export const zhCN = {
   'import.step.active': '进行中',
   'import.step.waiting': '等待',
 
-  'import.foundCount': '找到 {count} 个可能的地点',
+  'import.foundCount': '从这篇攻略中发现 {count} 个地点',
   'import.foundMatched': '其中 {count} 个已匹配到 Meridian 已有地点',
   'import.reviewTitle': '确认你想保存的地点',
   'import.reviewHint': '打勾的地点会保存到「我的收藏」，之后可以加入行程。',
@@ -1446,7 +1446,7 @@ export const en: Record<MessageKey, string> = {
   'import.step.active': 'in progress',
   'import.step.waiting': 'waiting',
 
-  'import.foundCount': 'Found {count} possible places',
+  'import.foundCount': 'Found {count} places in this guide',
   'import.foundMatched': '{count} of them matched a place Meridian already holds',
   'import.reviewTitle': 'Confirm what you want to keep',
   'import.reviewHint': 'Ticked places are saved to My places, and can then join an itinerary.',
