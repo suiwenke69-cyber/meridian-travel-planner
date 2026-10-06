@@ -426,6 +426,39 @@ hard timeout so one hung action cannot swallow the run.
 
 ---
 
+## Hosted demo
+
+The product is live, statically, on GitHub Pages:
+
+**https://suiwenke69-cyber.github.io/**
+
+`npm run deploy:pages` builds a fully static export and publishes it. Two things
+about that build are deliberate:
+
+- **The build is a script, not a config flag.** `output: 'export'` cannot emit a Route
+  Handler, and this app has one: `app/api/route/route.ts`, the server-side proxy that
+  keeps keyed routing credentials out of the browser. `scripts/build-static.mjs` moves
+  it aside for the build and restores it in a `finally`, so an interrupted build cannot
+  lose it. The deployed site is unaffected — with no key configured that proxy answers
+  501 and the client falls back to keyless OSRM, which is what the static build uses.
+- **It is published to the account's user site, not a project page.** A project page is
+  served from `/<repo>/`, which would force a `basePath` prefix onto every absolute
+  asset path — the MapLibre worker, the photography. The user site is served from the
+  domain root, so nothing has to be rewritten and there is no class of bug where a path
+  works locally and 404s in production.
+
+`.nojekyll` is written at the root of the published site and is not optional: GitHub
+Pages runs Jekyll by default, and Jekyll silently drops directories beginning with an
+underscore — which is where Next.js puts every chunk and stylesheet. Without it the
+site serves a blank page.
+
+For an AI reader, note that `*.trycloudflare.com` quick tunnels return **403 to
+GPTBot** — Cloudflare injects its own robots.txt on that domain. The GitHub Pages
+domain has no such restriction.
+
+
+---
+
 ## 10. Recommended next five improvements
 
 1. **Take Bali to full depth on the other nine destinations** — or trim the destination list to the
