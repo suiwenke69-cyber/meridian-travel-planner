@@ -8,7 +8,7 @@ import RegionExplorer from '@/components/region/RegionExplorer';
  * result in Chinese still shows the English name of the product.
  */
 export const metadata: Metadata = {
-  title: 'Meridian — 从新加坡出发，在地图上决定下一趟去哪',
+  title: 'Meridian — 先选出发地，在地图上决定下一趟去哪',
   description:
     '在新加坡出发的东南亚地图上选下一个目的地。比较飞行时间、住哪里、以及谁离谁真的近——在地图上看清楚再订票。Map-first Southeast Asia trip planner.',
 };
