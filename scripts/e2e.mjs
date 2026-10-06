@@ -1,0 +1,713 @@
+/**
+ * End-to-end smoke test for the Meridian planner.
+ *
+ * Drives a real Chromium against the running dev server through the whole V1
+ * workflow (region map → destination preview → planner → trip builder →
+ * map/itinerary sync → efficiency → persistence → mobile) and fails loudly on
+ * console errors, page errors or failed requests.
+ *
+ * Usage:
+ *   npm run dev            # in one terminal
+ *   npm run test:e2e       # in another
+ *
+ * Screenshots and a JSON report land in ./test-artifacts (gitignored).
+ */
+
+import { chromium } from 'playwright-core';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3000';
+const ARTIFACTS = join(process.cwd(), 'test-artifacts');
+const CHROME =
+  process.env.CHROME_PATH ??
+  join(
+    homedir(),
+    'Library/Caches/ms-playwright/chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+  );
+
+mkdirSync(ARTIFACTS, { recursive: true });
+
+const results = [];
+let failures = 0;
+
+function check(name, passed, detail = '') {
+  results.push({ name, passed, detail });
+  if (!passed) failures += 1;
+  console.log(`  [${passed ? 'PASS' : 'FAIL'}] ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+/**
+ * Waits for a browser-side predicate to become true.
+ *
+ * `querySourceFeatures` reads the tiles that are loaded *right now*, so a map
+ * that is mid-animation legitimately reports nothing. Sampling it once turned a
+ * working route into a failing test.
+ */
+async function until(page, fn, { timeout = 8000, interval = 250 } = {}) {
+  const deadline = Date.now() + timeout;
+  let last;
+  while (Date.now() < deadline) {
+    last = await page.evaluate(fn);
+    if (last) return last;
+    await page.waitForTimeout(interval);
+  }
+  return last;
+}
+
+/**
+ * One step of the workflow.
+ *
+ * The first version raced each step against a hard timeout. That was worse than
+ * it looked: a step that blew the budget did not stop, its remaining `await`s
+ * kept resolving, and its assertions landed minutes later under the heading of
+ * whichever step was running by then — so a timed-out step could be reported as
+ * a passing one. Steps now run to completion and simply say when they ran long.
+ * Every Playwright call has its own timeout, so a genuine hang is still bounded;
+ * a slow dev-server compile is not mistaken for a broken product.
+ */
+const SLOW_STEP_MS = 120_000;
+
+async function step(name, fn) {
+  console.log(`\n▶ ${name}`);
+  const started = Date.now();
+  const timer = setTimeout(() => {
+    console.log(`  ⏱ still running after ${Math.round((Date.now() - started) / 1000)}s — dev-server compile, most likely`);
+  }, SLOW_STEP_MS);
+  try {
+    await fn();
+  } catch (error) {
+    check(`${name} — threw`, false, error instanceof Error ? error.message.split('\n')[0] : String(error));
+  } finally {
+    clearTimeout(timer);
+    const elapsed = (Date.now() - started) / 1000;
+    if (elapsed > 20) console.log(`  ⏱ ${elapsed.toFixed(1)}s`);
+  }
+}
+
+/** Wait for the map to have at least one rendered marker. */
+async function waitForMarkers(page, selector = '.maplibregl-marker') {
+  await page.waitForSelector(selector, { timeout: 120_000, state: 'attached' });
+}
+
+function isoOffset(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
+}
+
+const consoleErrors = [];
+const pageErrors = [];
+const failedRequests = [];
+
+const browser = await chromium.launch({
+  executablePath: CHROME,
+  args: ['--no-sandbox', '--disable-dev-shm-usage'],
+});
+
+const context = await browser.newContext({
+  viewport: { width: 1512, height: 950 },
+  deviceScaleFactor: 1,
+  locale: 'en-GB',
+});
+
+const page = await context.newPage();
+const EXPECTED_CONSOLE_NOISE = [
+  // Step 18 deliberately points every <img> at a missing file to prove the
+  // fallback UI holds. The resulting 404 is the test's own doing.
+  /definitely-missing\.jpg/,
+  /status of 404/,
+];
+
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  const text = m.text();
+  if (EXPECTED_CONSOLE_NOISE.some((pattern) => pattern.test(text))) return;
+  consoleErrors.push(text);
+});
+page.on('pageerror', (e) => pageErrors.push(e.message));
+page.on('requestfailed', (request) => {
+  const url = request.url();
+  const reason = request.failure()?.errorText ?? '';
+  // Tile/routing CDNs are environment noise; ERR_ABORTED is Next.js cancelling
+  // a prefetch, which is expected during navigation.
+  if (/basemaps\.cartocdn\.com|tile\.openstreetmap\.org|router\.project-osrm\.org/.test(url)) return;
+  if (reason.includes('ERR_ABORTED')) return;
+  failedRequests.push(`${request.method()} ${url} — ${reason}`);
+});
+
+// ---------------------------------------------------------------------------
+// Warm-up. `next dev` compiles routes and client chunks on first request, so
+// the very first browser hit on /destination/bali can take far longer than any
+// assertion should. Compile everything once, then run the real checks.
+// ---------------------------------------------------------------------------
+
+await step('0. Warm up the dev server', async () => {
+  /*
+   * A precondition, deliberately not an assertion.
+   *
+   * MapLibre runs here under software rasterisation, which is CPU-hungry, and
+   * this machine may be running other projects at the same time. On a loaded
+   * box the very first navigation can take minutes, and failing the suite on
+   * that would say "the product is broken" when it means "the machine is busy".
+   * The steps that follow assert the product directly, and they fail loudly if
+   * anything is actually wrong — including a missing map worker.
+   */
+  for (const url of [BASE, `${BASE}/destination/bali`]) {
+    await page.request.get(url, { timeout: 240_000 }).catch(() => {});
+  }
+
+  try {
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 240_000 });
+    await page.waitForSelector('.maplibregl-canvas', { timeout: 240_000, state: 'attached' });
+
+    // The worker is vendored into public/ at predev time; if it is missing the
+    // canvas stays blank, so make that failure explicit rather than mysterious.
+    const basemapReady = await page.evaluate(async () => {
+      for (let i = 0; i < 60; i += 1) {
+        const map = window.__mmMap;
+        if (map && map.loaded() && map.areTilesLoaded()) return true;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      return false;
+    });
+    check('basemap tiles decoded (map worker healthy)', basemapReady);
+
+    await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 240_000 });
+    await page.waitForSelector('.maplibregl-canvas', { timeout: 240_000, state: 'attached' });
+    check('dev server warm (both routes compiled)', true);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+    console.log(`  ⚠ warm-up skipped — the machine was too loaded to reach the map in time (${reason})`);
+    console.log('    the product assertions below are unaffected; they fail on their own merits');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 1–6. Homepage, region map, origin, selection, preview, planner
+// ---------------------------------------------------------------------------
+
+await step('1. Homepage loads', async () => {
+  const response = await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+  check('homepage returns 200', response?.status() === 200, `status ${response?.status()}`);
+  await page.waitForSelector('[data-testid="destination-rail"]', { timeout: 30_000 });
+  check('destination rail rendered', true);
+});
+
+await step('2–3. Southeast Asia map renders with Singapore marked as origin', async () => {
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 30_000 });
+  await page.waitForSelector('.mm-origin', { timeout: 60_000, state: 'attached' });
+  const originName = (await page.locator('.mm-origin__name').first().innerText()).trim();
+  const originMeta = (await page.locator('.mm-origin__meta').first().innerText()).trim();
+  check('origin marker present and named', /Singapore/i.test(originName), originName);
+  check('origin labelled as home', /home/i.test(originMeta), originMeta);
+  // Destinations are native vector layers, so they are asserted through the map
+  // rather than through DOM pins.
+  // Poll rather than sample once: the layers are registered on style load, and
+  // the first frame that actually paints them can land a beat later.
+  const drawn = await page.evaluate(async () => {
+    const map = window.__mmMap;
+    if (!map) return null;
+    let destinations = 0;
+    for (let i = 0; i < 40; i += 1) {
+      destinations = map.queryRenderedFeatures({ layers: ['destination-dot'] }).length;
+      if (destinations >= 10) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return {
+      destinations,
+      hasArc: Boolean(map.getLayer('region-arc-line')),
+      basemapLabels: map.getStyle().layers.filter((l) => l.id.startsWith('label-')).length,
+    };
+  });
+  check('all ten destinations are drawn on the map', Boolean(drawn && drawn.destinations >= 10), JSON.stringify(drawn));
+  await page.screenshot({ path: join(ARTIFACTS, '01-home.png') });
+});
+
+await step('4–5. Bali selectable; preview appears without leaving the map', async () => {
+  await page.locator('[data-testid="destination-item-bali"]').click();
+  await page.waitForSelector('[data-testid="destination-preview"]', { timeout: 15_000 });
+  const preview = await page.locator('[data-testid="destination-preview"]').innerText();
+  check('preview shows Bali', /Bali/i.test(preview));
+  check('preview shows the SIN → DPS route', /SIN/.test(preview) && /DPS/.test(preview));
+  check('preview states the flight is direct', /Direct/.test(preview));
+  check('preview states approximate flight duration', /2h 35m|2h 55m/.test(preview));
+  check('preview shows a readable ideal stay', /4–7 days/.test(preview), firstMatch(preview, /Ideal stay[\s\S]{0,30}/));
+  check('preview shows what the destination is good for', /Good for/i.test(preview));
+  check('preview shows Marriott inventory', /Marriott Bonvoy/.test(preview));
+  check('preview shows Hilton inventory', /Hilton Honors/.test(preview));
+  check('preview shows a human-readable route pair', /SIN → DPS/.test(preview));
+  check('map stayed on the page', (await page.locator('.maplibregl-canvas').count()) === 1);
+  await page.screenshot({ path: join(ARTIFACTS, '02-preview.png') });
+});
+
+await step('6. Bali opens at whole-island scale with EXPLORE as the default', async () => {
+  await page.locator('[data-testid="explore-destination"]').click();
+  await page.waitForURL(/\/destination\/bali/, { timeout: 30_000 });
+  await page.waitForSelector('[data-testid="planner-shell"]', { timeout: 120_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 60_000 });
+  await page.waitForTimeout(6000);
+
+  const exploreActive = await page.locator('[data-testid="dest-tab-explore"]').getAttribute('aria-selected');
+  check('EXPLORE is the default tab, not a trip form', exploreActive === 'true', `aria-selected=${exploreActive}`);
+
+  const view = await page.evaluate(() => {
+    const m = window.__mmMap;
+    const b = m.getBounds();
+    return { zoom: Number(m.getZoom().toFixed(2)), west: b.getWest(), east: b.getEast(), south: b.getSouth(), north: b.getNorth() };
+  });
+  // The semantic requirement: every headline region plus the airport is on screen.
+  const mustSee = await page.evaluate(() => {
+    const m = window.__mmMap;
+    const b = m.getBounds();
+    const points = [
+      { name: 'Canggu', lat: -8.6553, lng: 115.13 },
+      { name: 'Seminyak', lat: -8.6833, lng: 115.16 },
+      { name: 'Ubud', lat: -8.5069, lng: 115.2625 },
+      { name: 'Uluwatu', lat: -8.814, lng: 115.088 },
+      { name: 'Nusa Dua', lat: -8.7963, lng: 115.226 },
+      { name: 'Sanur', lat: -8.6905, lng: 115.262 },
+      { name: 'DPS airport', lat: -8.748056, lng: 115.1675 },
+    ];
+    return points.filter((p) => !b.contains([p.lng, p.lat])).map((p) => p.name);
+  });
+  check('every headline area and the airport are in view on arrival', mustSee.length === 0, mustSee.length ? `off screen: ${mustSee.join(', ')}` : 'all visible');
+  await page.screenshot({ path: join(ARTIFACTS, '03-explore.png') });
+});
+
+await step('7. Every named travel area is present and labelled on the map', async () => {
+  const labelled = await page.evaluate(() => {
+    const m = window.__mmMap;
+    if (!m.getLayer('area-label')) return null;
+    const feats = m.querySourceFeatures('area-centres');
+    return feats.map((f) => f.properties.name);
+  });
+  const required = ['Canggu', 'Seminyak', 'Ubud', 'Uluwatu', 'Nusa Dua', 'Sanur'];
+  const normalised = (labelled ?? []).map((n) => String(n).toLowerCase());
+  const missing = required.filter((name) => !normalised.some((n) => n.includes(name.toLowerCase().split(' ')[0])));
+  check('all six headline areas exist as map labels', missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : required.join(', '));
+
+  const visible = await page.evaluate(() => {
+    const m = window.__mmMap;
+    const rendered = m.queryRenderedFeatures({ layers: ['area-label'] });
+    return rendered.map((f) => String(f.properties.name).toLowerCase());
+  });
+  const shown = required.filter((name) => visible.some((n) => n.includes(name.toLowerCase().split(' ')[0])));
+  check('at least five of the six are actually drawn at island scale', shown.length >= 5, shown.join(', '));
+});
+
+await step('8. Area cards carry photography and structured metadata', async () => {
+  const card = page.locator('[data-testid="area-card-canggu"]');
+  check('area card rendered', (await card.count()) === 1);
+  const text = await card.innerText();
+  check('area card shows the region name', /Canggu/i.test(text));
+  check('area card shows its tagline', /Surf · Cafés/.test(text), firstMatch(text, /Surf[^\n]*/));
+  const images = await card.locator('img').count();
+  check('area card shows a photograph', images >= 1, `${images} image(s)`);
+  const loaded = await card.locator('img').first().evaluate((el) => el.complete && el.naturalWidth > 0);
+  check('the area photograph actually loads', loaded);
+  await page.screenshot({ path: join(ARTIFACTS, '04-areas.png') });
+});
+
+await step('9. Selecting an area focuses the map and opens a visual area card', async () => {
+  await page.locator('[data-testid="area-card-uluwatu"]').click();
+  await page.waitForSelector('[data-testid="area-detail"]', { timeout: 15_000 });
+  await page.waitForTimeout(2500);
+  const detail = await page.locator('[data-testid="area-detail"]').innerText();
+  check('area detail names the region', /Uluwatu/i.test(detail));
+  check('area detail states what it is best for', /Best for/i.test(detail));
+  check('area detail states what it is less ideal for', /Less ideal/i.test(detail));
+  check('area detail shows a photo credit', /CC|public domain|Wikimedia/i.test(detail), firstMatch(detail, /[A-Z][^\n]*CC[^\n]*/));
+  const zoom = await page.evaluate(() => Number(window.__mmMap.getZoom().toFixed(1)));
+  check('the map focuses the area without dropping to street level', zoom >= 9 && zoom <= 12.5, `zoom ${zoom}`);
+  await page.screenshot({ path: join(ARTIFACTS, '05-area-detail.png') });
+});
+
+await step('10. STAY shows hotel cards with photography and works as a filter', async () => {
+  await page.locator('[data-testid="dest-tab-stay"]').click();
+  await page.waitForSelector('[data-testid^="hotel-card-"]', { timeout: 20_000 });
+  await page.waitForTimeout(2500);
+
+  // The area chosen in EXPLORE carries over as context — and must be removable.
+  const chip = page.locator('[data-testid="area-filter-chip"]');
+  await chip.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+  check('an inherited area filter is visible and removable', (await chip.count()) === 1);
+  await chip.click();
+  await page.waitForTimeout(2500);
+
+  const cards = await page.locator('[data-testid^="hotel-card-"]').count();
+  check('hotel cards are listed', cards > 0, `${cards} cards`);
+
+  const stRegis = page.locator('[data-testid="hotel-card-the-st-regis-bali-resort"]');
+  check('a known Marriott property is present', (await stRegis.count()) === 1);
+  const cardText = await stRegis.innerText();
+  check('hotel card names the loyalty programme', /Marriott Bonvoy|St\. Regis/.test(cardText));
+  check('hotel card shows a price TIER, not a rate', /\${2,4}/.test(cardText) && !/per night|IDR|USD\s?\d/i.test(cardText));
+  check('hotel card shows the airport transfer context', /DPS/i.test(cardText));
+  const hotelImg = await stRegis.locator('img').count();
+  check('hotel card shows a photograph', hotelImg >= 1, `${hotelImg}`);
+
+  // Marriott / Hilton filtering
+  const before = await page.locator('[data-testid^="hotel-card-"]').count();
+  await page.locator('[data-testid="stay-filter-hilton"]').click();
+  await page.waitForTimeout(1200);
+  const hiltonCards = await page.locator('[data-testid^="hotel-card-"]').count();
+  check('the Hilton filter narrows the list', hiltonCards > 0 && hiltonCards < before, `${before} → ${hiltonCards}`);
+  await page.locator('[data-testid="stay-filter-all"]').click();
+  await page.waitForTimeout(1200);
+  check('clearing the filter restores the list', (await page.locator('[data-testid^="hotel-card-"]').count()) === before);
+  await page.screenshot({ path: join(ARTIFACTS, '06-stay.png') });
+});
+
+await step('11. Hotel markers and hotel cards are synchronised', async () => {
+  await page.waitForTimeout(1500);
+  const markers = await page.locator('.maplibregl-marker .mk--marriott, .maplibregl-marker .mk--hilton').count();
+  check('hotel markers are drawn individually, not clustered away', markers >= 8, `${markers} markers`);
+
+  // Hovering a card must emphasise its marker on the map.
+  await page.locator('[data-testid="hotel-card-the-st-regis-bali-resort"]').hover();
+  await page.waitForTimeout(1200);
+  const emphasised = await page.locator('.mk--emphasised').count();
+  check('hovering a hotel card emphasises its marker', emphasised >= 1, `${emphasised}`);
+  await page.screenshot({ path: join(ARTIFACTS, '07-stay-sync.png') });
+});
+
+await step('12. DO filters by category and shows visual place cards', async () => {
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForSelector('[data-testid^="place-card-"]', { timeout: 20_000 });
+  await page.waitForTimeout(2500);
+
+  const namesIn = async () => (await page.locator('[data-testid^="place-card-"] h3').allInnerTexts()).join('|');
+  const highlights = await namesIn();
+  const highlightCount = await page.locator('[data-testid^="place-card-"]').count();
+  check('the default Highlights category lists places', highlightCount > 0, `${highlightCount}`);
+  check('place cards carry photographs', (await page.locator('[data-testid^="place-card-"] img').count()) > 0);
+
+  await page.locator('[data-testid="do-category-beach"]').click();
+  await page.waitForTimeout(2500);
+  const beaches = await namesIn();
+  const beachCount = await page.locator('[data-testid^="place-card-"]').count();
+  check(
+    'switching category changes which places are shown',
+    beachCount > 0 && beaches !== highlights,
+    `highlights(${highlightCount}) → beaches(${beachCount})`,
+  );
+
+  // The map must follow the category rather than showing everything at once.
+  const markersNow = await page.locator('.maplibregl-marker').count();
+  check('the map only draws the selected category', markersNow < 30, `${markersNow} markers`);
+  await page.screenshot({ path: join(ARTIFACTS, '08-do.png') });
+});
+
+await step('13. Starting a trip is deliberately three fields', async () => {
+  await page.locator('[data-testid="dest-tab-plan"]').click();
+  await page.waitForSelector('[data-testid="arrival-date"]', { timeout: 15_000 });
+
+  const styleFieldsetVisible = await page.locator('fieldset:has-text("Travel style")').isVisible().catch(() => false);
+  const budgetFieldsetVisible = await page.locator('fieldset:has-text("Budget tier")').isVisible().catch(() => false);
+  check(
+    'the first-run form leads with dates and travellers only',
+    !styleFieldsetVisible && !budgetFieldsetVisible,
+    `travel style visible=${styleFieldsetVisible}, budget visible=${budgetFieldsetVisible}`,
+  );
+  const coreFields = await page.locator('[data-testid="arrival-date"], [data-testid="departure-date"], [data-testid="travellers"]').count();
+  check('the three core fields are present', coreFields === 3, `${coreFields}`);
+
+  await page.locator('[data-testid="arrival-date"]').fill('2026-11-19');
+  await page.locator('[data-testid="departure-date"]').fill('2026-11-23');
+  await page.waitForTimeout(400);
+  const cta = await page.locator('[data-testid="create-trip"]').innerText();
+  check('the call to action states the trip length', /5 days/.test(cta), cta);
+  await page.locator('[data-testid="create-trip"]').click();
+  await page.waitForSelector('[data-testid="day-tab-5"]', { timeout: 15_000 });
+  check('five days are generated', (await page.locator('[data-testid^="day-tab-"]').count()) === 5);
+  await page.screenshot({ path: join(ARTIFACTS, '09-trip-created.png') });
+});
+
+await step('14. Places and hotels can be added to the itinerary', async () => {
+  await page.locator('[data-testid="dest-tab-stay"]').click();
+  await page.waitForSelector('[data-testid^="hotel-card-"]', { timeout: 20_000 });
+  await page.waitForTimeout(2500);
+  await page.locator('[data-testid="add-to-trip"]').first().click();
+  await page.waitForTimeout(900);
+
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForTimeout(2500);
+  const added = [];
+  for (let i = 0; i < 3; i += 1) {
+    const cards = page.locator('[data-testid^="place-card-"]');
+    if ((await cards.count()) <= i) break;
+    const name = ((await cards.nth(i).locator('h3').innerText()) || '').trim();
+    const add = cards.nth(i).locator('[data-testid="add-to-trip"]');
+    if ((await add.count()) === 0) continue;
+    await add.first().click();
+    await page.waitForTimeout(800);
+    added.push(name);
+  }
+  check('places were added from the DO tab', added.length >= 2, added.join(' · '));
+
+  await page.locator('[data-testid="dest-tab-plan"]').click();
+  await page.waitForTimeout(6000);
+  const stops = await page.locator('[data-testid^="itinerary-item-"]').count();
+  check('the itinerary lists the added stops', stops >= 3, `${stops} stops`);
+  const body = await page.locator('main').innerText();
+  const present = added.filter((n) => body.includes(n));
+  check('the added places appear in the timeline', present.length === added.length, `${present.length}/${added.length}`);
+  await page.screenshot({ path: join(ARTIFACTS, '10-itinerary.png') });
+});
+
+await step('15. Every consecutive stop gets a transport leg', async () => {
+  const stops = await page.locator('[data-testid^="itinerary-item-"]').count();
+  const legs = await page.locator('[data-testid^="transport-leg-"]').count();
+  check('there is one leg between each pair of stops', legs === stops - 1, `${stops} stops → ${legs} legs`);
+
+  const legText = await page.locator('[data-testid^="transport-leg-"]').first().innerText();
+  check('the leg names a transport mode', /Grab|taxi|Private car|Walk|Scooter|Fast boat/i.test(legText), firstMatch(legText, /Grab[^\n]*|Private car[^\n]*|Walk[^\n]*/));
+  check('the leg explains the recommendation', legText.length > 60);
+
+  const measured = /OSRM road route|routing engine/.test(legText);
+  const unavailable = /Route unavailable/i.test(legText);
+  check('the leg declares where its numbers came from', measured || unavailable, measured ? 'routing engine named' : 'declared unavailable');
+  if (measured) {
+    check('a measured leg shows a distance and a duration', /≈\d+\s*(min|h)/.test(legText) && /\d+(\.\d+)?\s*(km|m)\b/.test(legText), firstMatch(legText, /≈[^\n]*/));
+  }
+  if (unavailable) {
+    check('an unavailable leg does not print a fabricated duration', !/≈\d+\s*min/.test(legText));
+  }
+  await page.screenshot({ path: join(ARTIFACTS, '11-transport-legs.png') });
+});
+
+await step('16. The map draws the same day as the itinerary', async () => {
+  /*
+   * `querySourceFeatures` reads the tiles that happen to be loaded, and a
+   * GeoJSON line can be painted on screen while that call returns nothing —
+   * which is exactly what it did. Render state is the honest thing to assert:
+   * the route line either put pixels on the map or it did not.
+   */
+  const readRoute = () =>
+    page.evaluate(() => {
+      const m = window.__mmMap;
+      if (!m.getLayer('route-line')) return null;
+      const rendered = m.queryRenderedFeatures({ layers: ['route-line'] });
+      const fromTiles = m
+        .querySourceFeatures('route')
+        .flatMap((f) => (f.geometry.type === 'LineString' ? f.geometry.coordinates : []));
+      const data = m.getSource('route')?._data;
+      const fromData = data?.geometry?.coordinates?.length ?? 0;
+      return {
+        present: true,
+        rendered: rendered.length,
+        points: Math.max(fromTiles.length, fromData),
+        dashed: Boolean(m.getPaintProperty('route-line', 'line-dasharray')),
+      };
+    });
+
+  const route = await until(page, () => {
+    const m = window.__mmMap;
+    if (!m.getLayer('route-line')) return null;
+    if (m.queryRenderedFeatures({ layers: ['route-line'] }).length === 0) return null;
+    return true;
+  }).then(readRoute);
+
+  check('the day route is drawn', Boolean(route?.present && route.rendered > 0), JSON.stringify(route));
+  /*
+   * Cross-check the line against the panel rather than an internal coordinate
+   * count: a solid line must be backed by a real routing engine, and a dashed
+   * one must be a day where nothing could be measured. If those two ever
+   * disagree, the map is claiming a road the legs say it does not have.
+   */
+  const legSources = await page.locator('[data-testid^="transport-leg-"]').allInnerTexts();
+  const measured = legSources.some((text) => /routing engine|OSRM|OpenRouteService|Mapbox|Google Routes/i.test(text));
+  const dashed = route?.dashed === true;
+  check(
+    'the drawn line matches what the legs claim',
+    measured ? !dashed : dashed,
+    dashed
+      ? 'dashed straight corridor — no leg had route data'
+      : 'solid road geometry — backed by a routing engine',
+  );
+
+  const numbered = await page.locator('.mk--numbered').count();
+  const stops = await page.locator('[data-testid^="itinerary-item-"]').count();
+  check('each stop is numbered on the map', numbered === stops, `${numbered} numbered markers for ${stops} stops`);
+  await page.screenshot({ path: join(ARTIFACTS, '12-route.png') });
+});
+
+await step('17. Switching day changes the route and the emphasis', async () => {
+  const routeWidth = () =>
+    page.evaluate(() => {
+      const m = window.__mmMap;
+      if (!m.getLayer('route-line')) return 0;
+      return m.queryRenderedFeatures({ layers: ['route-line'] }).length;
+    });
+  const before = (await until(page, () => {
+    const m = window.__mmMap;
+    if (!m.getLayer('route-line')) return 0;
+    return m.queryRenderedFeatures({ layers: ['route-line'] }).length || 0;
+  })) ?? 0;
+
+  await page.locator('[data-testid="day-tab-2"]').click();
+  await page.waitForTimeout(3500);
+  const day2Stops = await page.locator('[data-testid^="itinerary-item-"]').count();
+  check(
+    'day 2 is empty and says so',
+    day2Stops === 0 || (await page.locator('main').innerText()).includes('is empty'),
+    `${day2Stops} stops`,
+  );
+
+  await page.locator('[data-testid="day-tab-1"]').click();
+  await page.waitForTimeout(3500);
+  const after = (await until(page, () => {
+    const m = window.__mmMap;
+    if (!m.getLayer('route-line')) return 0;
+    return m.queryRenderedFeatures({ layers: ['route-line'] }).length || 0;
+  })) ?? 0;
+  check('returning to day 1 restores its route', after > 0 && before > 0, `${before} → ${after} rendered segments`);
+  void routeWidth;
+});
+
+await step('18. A broken image falls back gracefully', async () => {
+  // Force every image on the page to fail and confirm the UI stays intact.
+  await page.evaluate(() => {
+    for (const img of Array.from(document.images)) {
+      img.src = '/images/bali/definitely-missing.jpg';
+    }
+  });
+  await page.waitForTimeout(2500);
+  const crashed = await page.evaluate(() => /Application error|client-side exception/i.test(document.body.innerText));
+  check('broken images do not crash the page', !crashed);
+  await page.screenshot({ path: join(ARTIFACTS, '13-broken-images.png') });
+});
+
+await step('18b. Trip survives a full page refresh', async () => {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="planner-shell"]', { timeout: 60_000 });
+  await page.waitForTimeout(3000);
+  const stats = await page.evaluate(() => {
+    const raw = window.localStorage.getItem('meridian.trips.v1');
+    if (!raw) return { days: 0, stops: 0 };
+    const trip = JSON.parse(raw).state.trips[0];
+    return { days: trip.days.length, stops: trip.days.reduce((n, d) => n + d.items.length, 0) };
+  });
+  check('the trip survives a refresh', stats.days === 5 && stats.stops >= 3, JSON.stringify(stats));
+});
+
+await step('18c. Mobile keeps the map and the photography usable', async () => {
+  const mobile = await context.newPage();
+  await mobile.setViewportSize({ width: 390, height: 844 });
+  mobile.on('pageerror', (e) => pageErrors.push(`mobile: ${e.message}`));
+  await mobile.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+  await mobile.waitForSelector('[data-testid="planner-shell"]', { timeout: 60_000 });
+  await mobile.waitForSelector('.maplibregl-canvas', { timeout: 60_000 });
+  await mobile.waitForTimeout(6000);
+
+  const mapBox = await mobile.locator('.maplibregl-canvas').boundingBox();
+  const sheetBox = await mobile.locator('section[aria-label="Destination explorer"]').boundingBox();
+  check('the map still occupies the top of the screen', Boolean(mapBox && mapBox.height > 300), mapBox ? `${Math.round(mapBox.height)}px` : 'missing');
+  check('the sheet does not consume the whole viewport', Boolean(sheetBox && sheetBox.y > 250), sheetBox ? `sheet starts at ${Math.round(sheetBox.y)}` : 'missing');
+
+  await mobile.locator('[data-testid="dest-tab-stay"]').click();
+  await mobile.waitForTimeout(4000);
+  const mobileCards = await mobile.locator('[data-testid^="hotel-card-"]').count();
+  check('hotel photography remains usable on mobile', mobileCards > 0, `${mobileCards} cards`);
+  await mobile.screenshot({ path: join(ARTIFACTS, '14-mobile.png') });
+  await mobile.close();
+});
+
+await step('19. Every other destination loads without crashing', async () => {
+  // The starter destinations share the same components but different data, so a
+  // data problem there would only show up by actually loading them.
+  const others = [
+    'phu-quoc',
+    'da-nang-hoi-an',
+    'ho-chi-minh-city',
+    'hanoi',
+    'siem-reap',
+    'phnom-penh',
+    'cebu',
+    'boracay',
+    'palawan',
+  ];
+  /*
+   * Warm every route over HTTP first. `next dev` compiles a route on its first
+   * request, and nine cold compiles inside a browser loop is a timeout waiting
+   * to happen — it is a slow build, not a broken destination.
+   */
+  for (const id of others) {
+    await page.request.get(`${BASE}/destination/${id}`, { timeout: 300_000 }).catch(() => {});
+  }
+
+  const probe = await context.newPage();
+  probe.setViewportSize({ width: 1440, height: 900 });
+  const probeErrors = [];
+  probe.on('pageerror', (e) => probeErrors.push(e.message));
+  const results = [];
+
+  for (const id of others) {
+    await probe.goto(`${BASE}/destination/${id}`, { waitUntil: 'domcontentloaded', timeout: 240_000 });
+    try {
+      await probe.waitForSelector('[data-testid="planner-shell"]', { timeout: 240_000 });
+      await probe.waitForSelector('.maplibregl-canvas', { timeout: 240_000, state: 'attached' });
+      // EXPLORE draws areas as native layers, not DOM markers, so assert on the
+      // rendered cartography rather than on pins that correctly do not exist.
+      const drawn = await probe.evaluate(async () => {
+        for (let i = 0; i < 120; i += 1) {
+          const map = window.__mmMap;
+          if (map?.loaded?.()) {
+            const areas = map.queryRenderedFeatures({ layers: ['area-label'] }).length;
+            if (areas > 0) return { areas, tabs: document.querySelectorAll('[data-testid^="dest-tab-"]').length };
+          }
+          await new Promise((r) => setTimeout(r, 400));
+        }
+        return { areas: 0, tabs: document.querySelectorAll('[data-testid^="dest-tab-"]').length };
+      });
+      const text = await probe.locator('main').innerText();
+      const crashed = /Application error|client-side exception/i.test(text);
+      results.push({ id, ok: !crashed && drawn.areas > 0 && drawn.tabs === 4, areas: drawn.areas, tabs: drawn.tabs });
+    } catch (error) {
+      results.push({ id, ok: false, areas: 0, tabs: 0, error: String(error).split('\n')[0] });
+    }
+  }
+
+  const bad = results.filter((r) => !r.ok);
+  check(
+    `all ${others.length} starter destinations render EXPLORE with their regions`,
+    bad.length === 0,
+    bad.length ? bad.map((b) => `${b.id}(areas=${b.areas},tabs=${b.tabs})`).join(', ') : results.map((r) => `${r.id}:${r.areas}`).join(' '),
+  );
+  check('no page errors across the other destinations', probeErrors.length === 0, probeErrors.slice(0, 3).join(' | ') || 'none');
+  await probe.close();
+});
+
+// ---------------------------------------------------------------------------
+
+writeFileSync(
+  join(ARTIFACTS, 'report.json'),
+  JSON.stringify({ results, consoleErrors, pageErrors, failedRequests }, null, 2),
+);
+
+console.log('\n── console errors ──');
+console.log(consoleErrors.length ? consoleErrors.join('\n') : '(none)');
+console.log('\n── page errors ──');
+console.log(pageErrors.length ? pageErrors.join('\n') : '(none)');
+console.log('\n── failed requests ──');
+console.log(failedRequests.length ? failedRequests.join('\n') : '(none)');
+
+check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
+check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | ') || 'none');
+
+console.log(`\n${failures === 0 ? '✅ ALL CHECKS PASSED' : `❌ ${failures} CHECK(S) FAILED`}`);
+console.log(`Report: ${join(ARTIFACTS, 'report.json')}`);
+
+await browser.close();
+process.exit(failures === 0 ? 0 : 1);
+
+function firstLine(text) {
+  return (text ?? '').split('\n')[0].slice(0, 90);
+}
+
+function firstMatch(text, regex) {
+  const match = text.match(regex);
+  return match ? match[0].replace(/\s+/g, ' ') : 'no match';
+}

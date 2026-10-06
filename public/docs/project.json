@@ -1,0 +1,184 @@
+{
+  "name": "Meridian",
+  "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
+  "status": "V1 — working end to end, Bali is the reference implementation, no live data",
+  "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
+  "repository": {
+    "runtimeDependencies": [
+      "maplibre-gl",
+      "next",
+      "react",
+      "react-dom",
+      "zustand"
+    ],
+    "language": "TypeScript",
+    "framework": "Next.js 15 App Router / React 19",
+    "styling": "Tailwind CSS 3 with CSS custom properties as design tokens",
+    "state": "Zustand with persist middleware (localStorage), manual hydration",
+    "tests": "Custom Playwright-driven end-to-end suite (scripts/e2e.mjs)",
+    "dataValidation": "scripts/validate-data.ts (tsx)"
+  },
+  "mapEngine": {
+    "library": "MapLibre GL JS",
+    "tiles": "vector",
+    "styleAuthoredInRepo": "components/map/basemap-style.ts",
+    "primaryTileHost": {
+      "id": "carto",
+      "product": "carto.streets vector tiles",
+      "cost": "free, no API key, CORS open"
+    },
+    "fallbackTileHost": {
+      "id": "openfreemap",
+      "product": "OpenFreeMap planet tiles",
+      "cost": "free, no API key, no limits"
+    },
+    "whyVectorNotRaster": "Raster tiles bake labels into pixels. Vector tiles allow cutting the label set to country/region/city/town, forcing English, and applying the product's own palette.",
+    "labelPolicy": "No villages, suburbs, hamlets, POIs, road names, house numbers or waterway names. Base city labels start at zoom 6.",
+    "knownConstraint": "MapLibre's web worker is resolved via import.meta.url, which a bundler cannot follow. scripts/vendor-maplibre-worker.mjs vendors it into public/ before dev and build."
+  },
+  "routing": {
+    "primary": "OSRM (real road geometry, road distance, drive duration)",
+    "fallback": "Geodesic estimator with a documented speed model",
+    "abstraction": "lib/routing — distance and travel time are separate fields and never conflated",
+    "trafficModel": "none"
+  },
+  "dataScope": {
+    "destinations": 10,
+    "areas": 48,
+    "loyaltyHotels": 42,
+    "places": 119,
+    "placesWithApproximateCoordinates": 5,
+    "hotelGroups": [
+      "Marriott Bonvoy",
+      "Hilton Honors"
+    ],
+    "pricesShown": "none — hotel cost is a brand-positioning tier whose basis is displayed",
+    "verificationMethod": "Wikidata bounding-box queries, Wikipedia coordinates API, OpenStreetMap element ids; every record keeps its source",
+    "baliHotels": 20,
+    "baliAreas": 15,
+    "baliPlaces": 48
+  },
+  "correctionsFoundDuringVerification": [
+    "Bali has only five Hilton-branded hotels; a DoubleTree in the first draft does not exist and was removed",
+    "Siem Reap's airport code is SAI, not REP (REP closed October 2023)",
+    "Phnom Penh moved to Techo International (KTI) in September 2025",
+    "El Nido's IATA code is ENI; LIO is only the local airstrip name",
+    "Le Meridien Angkor is closed but still marketed as open by the brand",
+    "Four Points by Sheraton Palawan is in Sabang, ~2 hours from Puerto Princesa city",
+    "Four Points by Sheraton Bali, Ungasan was in the product twice, under two ids and two Marriott property codes (DPSFG and DPSFP). Only DPSFG is real; the duplicate is deleted, and the validator now fails on two hotels plotted within 150 m of each other in the same destination"
+  ],
+  "bugsFoundByTesting": [
+    "Fixed region bounds excluded Bali, leaving a destination off-screen — bounds are now derived from the data",
+    "minZoom clamped the mobile fit and pushed the Singapore origin off the left edge",
+    "Marker z-index escaped the map stacking context and floated above the mobile bottom sheet",
+    "A 3.5% fill on inactive areas compounded across 10+ overlapping areas into a grey veil over the planning map",
+    "Area labels repeated 4-5 times because they were placed from large polygons instead of a one-point-per-area source",
+    "MapLibre's worker failed to load under the bundler, leaving a blank canvas with no error"
+  ],
+  "testResults": {
+    "checks": 70,
+    "passed": 70,
+    "failed": 0,
+    "consoleErrors": 0,
+    "pageErrors": 0,
+    "failedRequests": 0,
+    "productionBuild": "passes; 10 destinations pre-rendered"
+  },
+  "knownLimitations": [
+    "Sixteen of twenty Bali hotels have no verified property photography; this is a Commons/Openverse coverage limit, not a bug",
+    "Travel zones are approximations and are labelled as such in the UI",
+    "Traffic is not modelled; measured legs are free-flow estimates",
+    "Multimodal journeys are curated data for Bali only — described, not routed, with no timetables",
+    "Photography licences are commercial-use and attributed, but the set is not hand-curated",
+    "The image set is ~32 MB, which is heavy for a tunnel deployment",
+    "Only Bali is deep; the other nine destinations are architecturally complete but thin",
+    "No backend and no accounts; trips live in localStorage on one browser",
+    "No prices anywhere — hotel cost is a positioning tier with its basis displayed",
+    "Seven Bali places have no photography: three beach clubs and four logistical waypoints where any photo would be a stand-in for \"somewhere in Kuta\""
+  ],
+  "documents": {
+    "process": "/docs/PROCESS.md",
+    "readme": "/docs/README.md",
+    "roadmap": "/docs/ROADMAP.md",
+    "browsableDossier": "/process",
+    "dossierLines": "PROCESS.md documents both the original build and the destination redesign"
+  },
+  "destinationExperience": {
+    "navigation": [
+      "EXPLORE",
+      "STAY",
+      "DO",
+      "PLAN"
+    ],
+    "defaultTab": "explore",
+    "defaultView": "whole island of Bali",
+    "mapDiscipline": "one layer per tab; the camera re-frames per tab",
+    "areas": "six headline regions with authored taglines, drawn as native two-line map labels"
+  },
+  "imagery": {
+    "provider": "wikimedia-commons",
+    "architecture": "lib/images — components request by (entityKind, entityId), never construct a URL",
+    "images": 80,
+    "fields": [
+      "url",
+      "alt",
+      "role",
+      "subject",
+      "depicts",
+      "source.license",
+      "source.author",
+      "source.pageUrl"
+    ],
+    "honestyMechanism": "subject: subject|area|category — a hotel showing its beach is disclosed as an area photo",
+    "hotelsWithOwnPhotos": 3,
+    "hotelsBorrowingAreaPhoto": 17,
+    "regenerate": "npm run images:resolve && npm run images:download"
+  },
+  "transport": {
+    "abstraction": "TransportLeg with mode, rationale, alternatives, distance, duration, geometry, source, confidence, multimodal",
+    "routingProviders": {
+      "default": "OSRM (client-side, free, keyless)",
+      "serverOnly": [
+        "OpenRouteService",
+        "Mapbox Directions",
+        "Google Routes"
+      ],
+      "serverProxy": "app/api/route/route.ts — API keys never reach the browser"
+    },
+    "recommendation": "lib/transport/recommend.ts — separate from routing; states its reasoning in the UI",
+    "fabricationPolicy": "a route result cannot carry a number unless a provider produced one; unanswered legs render as \"Route unavailable\"",
+    "waterCrossings": "modelled as curated data, so Ubud to Nusa Penida renders as a two-mode leg via Sanur Harbour"
+  },
+  "photography": {
+    "provider": "lib/images — components ask by (entityKind, entityId) and never hold a URL",
+    "sources": [
+      "Wikimedia Commons",
+      "Openverse (Flickr and other CC repositories)"
+    ],
+    "manifest": "lib/data/images/bali-images.ts, generated by scripts/fetch-bali-images.mjs",
+    "images": 134,
+    "subjects": 60,
+    "licencePolicy": "commercial use only — CC BY, CC BY-SA, CC0 and public domain. No NC, no ND.",
+    "attribution": "author, licence and source page ship on every image and render on cards and detail views",
+    "hotelRule": "a hotel photo is used only if the file title names the property AND the right part of Bali, or the file sits in the property's own Commons category. A hotel with no verified photography has no entry and shows \"No property photography available\" — it never borrows its area photo.",
+    "baliHotelsWithPropertyPhotography": 4,
+    "baliHotelsTotal": 20,
+    "linkChecked": "every candidate is fetched before it is written into the manifest; sources that have since been deleted are dropped rather than shipped as a 404",
+    "signagePolicy": "Photographs of a hotel's name on a wall are excluded: correctly licensed and provably of the property, but not property photography. The generator logs each exclusion.",
+    "generatorIdCheck": "npm run validate:data fails if any manifest key is not a real entity, or if the generator's own id list names something the dataset does not contain"
+  },
+  "travelZones": {
+    "what": "approximate travel extents derived from each area's own mapped hotels and places",
+    "geometry": "convex hull of the area content, offset outward, smoothed",
+    "rendering": "tinted wash + fine dashed edge (dashed = approximate). Inserted below the basemap water layer so zones clip to land.",
+    "notAdminBoundaries": true,
+    "whyNotCircles": "a radial envelope around a centroid degenerates into a circle when content is sparse, which is exactly the crude radius appearance this replaced",
+    "hierarchy": "EXPLORE draws one scope at a time (nine stay bases OR six day-trip zones), shared with the panel through the UI store"
+  },
+  "transportLegs": {
+    "format": "mode · estimated duration · distance, then rationale, then source badge",
+    "sourceBadge": "names the routing engine, or says \"No route data\"",
+    "traffic": "not modelled — measured legs are labelled free-flow estimates",
+    "unavailable": "legs with no route data show no duration at all and the day clock is marked approx"
+  }
+}
