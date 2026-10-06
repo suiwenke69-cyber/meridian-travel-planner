@@ -5,7 +5,8 @@ import type { Destination } from '@/lib/types';
 import type { DestinationStats } from '@/lib/data';
 import { formatMinutesRange, primaryRouteSummary, SINGAPORE_ORIGIN } from '@/lib/data';
 import { IconArrowRight, IconClose } from '../ui/icons';
-import { useName, useT, type Translator } from '@/lib/i18n/use-t';
+import { useName, useT, useLocale, type Translator } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
 
 /**
  * The stay range in the reader's language.
@@ -39,6 +40,7 @@ export function DestinationPreviewCard({
   onClose?: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const name = useName();
   const route = primaryRouteSummary(destination);
   const sin = SINGAPORE_ORIGIN.airports[0];
@@ -49,7 +51,7 @@ export function DestinationPreviewCard({
       <header className="px-4 pb-3 pt-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="label-caps">{destination.country}</p>
+            <p className="label-caps">{countryLabel(destination, locale)}</p>
             <h2 className="mt-1 text-[26px] font-semibold leading-none tracking-[-0.02em] text-ink">
               {name.primary(destination)}
             </h2>
@@ -149,4 +151,20 @@ export function DestinationPreviewCard({
       </div>
     </article>
   );
+}
+
+
+/**
+ * The country name in the reader's language.
+ *
+ * Falls back to the data's own string when the catalogue has no entry, which
+ * keeps a newly added destination from rendering a raw message key.
+ */
+function countryLabel(
+  destination: { country: string; countryZh?: string },
+  locale: 'zh-CN' | 'en',
+): string {
+  if (locale === 'en') return destination.country;
+  const key = `country.${destination.country.toLowerCase()}` as MessageKey;
+  return destination.countryZh ?? destination.country;
 }

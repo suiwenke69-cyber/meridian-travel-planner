@@ -21,7 +21,7 @@ import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { DestinationPreviewCard } from './DestinationPreviewCard';
 import { useIsDesktop } from '@/lib/hooks';
 import type { MessageKey } from '@/lib/i18n';
-import { message, useName, useT, type Translator } from '@/lib/i18n/use-t';
+import { message, useName, useT, useLocale, type Translator } from '@/lib/i18n/use-t';
 
 const RegionMapView = dynamic(() => import('./RegionMapView'), {
   ssr: false,
@@ -364,6 +364,7 @@ function DestinationRow({
 }) {
   const t = useT();
   const name = useName();
+  const locale = useLocale();
   const route = primaryRouteSummary(destination);
   // A single typical block time. The full range is on the preview card — a
   // range in the rail pushed the country line into an ellipsis for no gain.
@@ -391,7 +392,7 @@ function DestinationRow({
           {name.primary(destination)}
         </span>
         <span className="mt-[3px] block truncate text-[12px] leading-tight text-muted">
-          {destination.country}
+          {locale === 'zh-CN' ? (destination.countryZh ?? destination.country) : destination.country}
           <span className="mx-1.5 text-line-strong" aria-hidden="true">
             ·
           </span>
