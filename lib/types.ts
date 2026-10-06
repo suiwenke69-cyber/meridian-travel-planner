@@ -442,6 +442,8 @@ export interface Hotel {
   /** Minutes by road to the destination's primary airport. */
   airportTransfer: { toAirportId: string; minutesMin: number; minutesMax: number; confidence: DataConfidence };
   description: string;
+  /** Concise Chinese copy, authored rather than translated. */
+  descriptionZh?: string;
   loyaltyProgramme: string;
   roomCount?: number;
   officialUrl?: string;
@@ -552,8 +554,10 @@ export interface PlaceActivity {
   difficulty?: ActivityDifficulty;
   weatherDependency: WeatherDependency;
   reservationRecommended: boolean;
-  /** One line on how you actually get there, e.g. "酒店包车或 Grab，约 30 分钟". */
+  /** One line on how you actually get there, e.g. "Hotel car or Grab, about 30 minutes". */
   transportContext?: string;
+  /** Chinese for `transportContext`; falls back to the English string. */
+  transportContextZh?: string;
   /** True when a certified operator or instructor is required. */
   operatorRequired?: boolean;
 }

@@ -2,6 +2,9 @@ import type { Airport, Area, AreaSeed, Destination, DestinationSeed, Hotel, Hote
 import { getImages } from '../images';
 import { AREA_TAGLINES, deriveTagline } from './area-taglines';
 import { bali, baliAreas, baliHotels, baliPlaces } from './destinations/bali';
+import { baliRestaurants } from './destinations/bali-restaurants';
+import { baliActivities } from './destinations/bali-activities';
+import { BALI_AREA_ZH, BALI_HOTEL_ZH, BALI_PLACE_ZH } from './zh/bali-zh';
 import { starterDestinations, starterHotels, starterPlaces } from './destinations/starter';
 
 /**
@@ -20,24 +23,46 @@ import { starterDestinations, starterHotels, starterPlaces } from './destination
  * destination with no photography at all) requires no change to the data.
  */
 function decorateHotel(hotel: HotelSeed): Hotel {
-  return { ...hotel, images: getImages('hotel', hotel.id) };
+  const zh = BALI_HOTEL_ZH[hotel.id];
+  return {
+    ...hotel,
+    nameZh: hotel.nameZh ?? zh?.nameZh,
+    descriptionZh: hotel.descriptionZh ?? zh?.descriptionZh,
+    images: getImages('hotel', hotel.id),
+  };
 }
 
 function decoratePlace(place: PlaceSeed): Place {
-  return { ...place, images: getImages('place', place.id) };
+  const zh = BALI_PLACE_ZH[place.id];
+  return {
+    ...place,
+    nameZh: place.nameZh ?? zh?.nameZh,
+    descriptionZh: place.descriptionZh ?? zh?.descriptionZh,
+    bestTimeZh: place.bestTimeZh ?? zh?.bestTimeZh,
+    tagsZh: place.tagsZh ?? zh?.tagsZh,
+    images: getImages('place', place.id),
+  };
 }
 
 function decorateArea(area: AreaSeed): Area {
+  const zh = BALI_AREA_ZH[area.id];
   return {
     ...area,
+    nameZh: area.nameZh ?? zh?.nameZh,
+    taglineZh: area.taglineZh ?? zh?.taglineZh,
+    summaryZh: area.summaryZh ?? zh?.summaryZh,
+    vibeZh: area.vibeZh ?? zh?.vibeZh,
+    bestForZh: area.bestForZh ?? zh?.bestForZh,
+    weakForZh: area.weakForZh ?? zh?.weakForZh,
     tagline: AREA_TAGLINES[area.id] ?? deriveTagline(area),
     images: getImages('area', area.id),
   };
 }
 
 const HOTELS: Hotel[] = [...baliHotels, ...starterHotels].map(decorateHotel);
-const PLACES: Place[] = [...baliPlaces, ...starterPlaces].map(decoratePlace);
+const PLACES: Place[] = [...baliPlaces, ...baliRestaurants, ...baliActivities, ...starterPlaces].map(decoratePlace);
 const AREAS: Area[] = [baliAreas, ...starterDestinations.map((d) => d.areas)].flat().map((area) => decorateArea(area));
+
 function decorateDestination(destination: DestinationSeed): Destination {
   return { ...destination, areas: destination.areas.map(decorateArea) };
 }

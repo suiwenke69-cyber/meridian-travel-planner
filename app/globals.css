@@ -145,6 +145,14 @@
     @apply text-[12px] leading-snug text-muted;
   }
 
+  /* Form fields. One class so the research inbox and the trip form cannot drift
+     apart; the CJK line-height matters because Chinese glyphs are taller than
+     Latin ones at the same font-size. */
+  .field {
+    @apply block w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-[12.5px] leading-relaxed text-ink
+      placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-50;
+  }
+
   .surface-blur {
     background: rgba(255, 255, 255, 0.9);
     backdrop-filter: saturate(160%) blur(16px);
