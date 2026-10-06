@@ -89,20 +89,29 @@ export default function ResearchPage() {
 
   const detected = useMemo(() => detectPlatform(url), [url]);
 
+  /*
+   * Tab counts are MENTIONS, not sources.
+   *
+   * The first version counted unprocessed sources on 待处理 while filtering that
+   * tab by mention status `pending` — a status extraction never assigns. The
+   * default tab was therefore always empty, which is the worst possible place
+   * for an off-by-one: the reviewer opens the inbox and sees nothing to do.
+   */
   const counts = useMemo(() => {
     const by = (status: string) => mentions.filter((m) => m.status === status).length;
     return {
-      pending: sources.filter((s) => s.status === 'unprocessed').length,
+      pending: by('matched') + by('needs-review') + by('pending'),
       matched: by('matched'),
       'needs-review': by('needs-review') + by('pending'),
       accepted: by('accepted'),
       ignored: by('dismissed'),
     } as Record<InboxTab, number>;
-  }, [mentions, sources]);
+  }, [mentions]);
 
   const visibleMentions = useMemo(() => {
     const map: Record<InboxTab, string[]> = {
-      pending: ['pending'],
+      // 待处理 is the whole review queue: everything a human still has to decide.
+      pending: ['matched', 'needs-review', 'pending'],
       matched: ['matched'],
       'needs-review': ['needs-review', 'pending'],
       accepted: ['accepted'],

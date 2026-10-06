@@ -4,7 +4,14 @@ import { AREA_TAGLINES, deriveTagline } from './area-taglines';
 import { bali, baliAreas, baliHotels, baliPlaces } from './destinations/bali';
 import { baliRestaurants } from './destinations/bali-restaurants';
 import { baliActivities } from './destinations/bali-activities';
-import { BALI_AREA_ZH, BALI_HOTEL_ZH, BALI_PLACE_ZH } from './zh/bali-zh';
+import {
+  BALI_AREA_ZH,
+  BALI_DESTINATION_ZH,
+  BALI_HOTEL_ZH,
+  BALI_PLACE_ZH,
+  DESTINATION_ZH,
+  STARTER_DESTINATION_ZH,
+} from './zh/bali-zh';
 import { starterDestinations, starterHotels, starterPlaces } from './destinations/starter';
 
 /**
@@ -64,7 +71,16 @@ const PLACES: Place[] = [...baliPlaces, ...baliRestaurants, ...baliActivities, .
 const AREAS: Area[] = [baliAreas, ...starterDestinations.map((d) => d.areas)].flat().map((area) => decorateArea(area));
 
 function decorateDestination(destination: DestinationSeed): Destination {
-  return { ...destination, areas: destination.areas.map(decorateArea) };
+  const naming = DESTINATION_ZH[destination.id];
+  const copy = destination.id === 'bali' ? BALI_DESTINATION_ZH : STARTER_DESTINATION_ZH[destination.id];
+  return {
+    ...destination,
+    nameZh: destination.nameZh ?? naming?.nameZh,
+    countryZh: destination.countryZh ?? naming?.countryZh,
+    taglineZh: destination.taglineZh ?? copy?.taglineZh,
+    descriptionZh: destination.descriptionZh ?? copy?.descriptionZh,
+    areas: destination.areas.map(decorateArea),
+  };
 }
 
 export const DESTINATIONS: Destination[] = [bali, ...starterDestinations].map(decorateDestination);

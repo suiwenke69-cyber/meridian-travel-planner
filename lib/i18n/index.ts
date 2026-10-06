@@ -71,3 +71,19 @@ export function pickList(zh: string[] | undefined, en: string[], locale: Locale)
 
 export { zhCN, en } from './messages';
 export type { MessageKey } from './messages';
+
+import { zhCN as ZH, en as EN } from './messages';
+import type { MessageKey as Key } from './messages';
+
+const CATALOGUES: Record<Locale, Record<Key, string>> = { 'zh-CN': ZH, en: EN };
+
+/**
+ * Non-hook lookup.
+ *
+ * Lives here rather than beside the React bindings because server components
+ * (the root layout's metadata, route metadata) need it, and a module marked
+ * `'use client'` cannot export a function a server component may call.
+ */
+export function message(locale: Locale, key: Key, params?: MessageParams): string {
+  return translate(locale, CATALOGUES[locale]?.[key] ?? CATALOGUES['zh-CN'][key] ?? key, params);
+}

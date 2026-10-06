@@ -161,13 +161,16 @@ export function clusterVisual(count: number, dominantLayer: MarkerLayer): Marker
  * the origin deserves a bespoke, unmistakable treatment: an accent star that
  * reads as "you are here" rather than as another destination pin.
  */
-export function originVisual(selected: boolean): MarkerVisual {
+export function originVisual(
+  selected: boolean,
+  labels: { name: string; meta: string } = { name: 'Singapore', meta: 'Home · Origin' },
+): MarkerVisual {
   const size = selected ? 22 : 20;
-  const html = `<div class="mm-origin" aria-label="Singapore — home and origin">
+  const html = `<div class="mm-origin" aria-label="${escapeHtml(labels.name)}">
   <span class="mm-origin__star" style="width:${size}px;height:${size}px">${svgGlyph('star', Math.round(size * 0.62))}</span>
   <span class="mm-origin__text">
-    <span class="mm-origin__name">Singapore</span>
-    <span class="mm-origin__meta">Home · Origin</span>
+    <span class="mm-origin__name">${escapeHtml(labels.name)}</span>
+    <span class="mm-origin__meta">${escapeHtml(labels.meta)}</span>
   </span>
 </div>`;
   return {

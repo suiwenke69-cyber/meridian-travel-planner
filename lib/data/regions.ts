@@ -17,6 +17,7 @@ export interface OriginAirport {
 export interface Origin {
   id: 'singapore';
   name: string;
+  nameZh?: string;
   label: string;
   country: string;
   countryCode: string;
@@ -29,6 +30,7 @@ export interface Origin {
 export const SINGAPORE_ORIGIN: Origin = {
   id: 'singapore',
   name: 'Singapore',
+  nameZh: '新加坡',
   label: 'Home / Origin',
   country: 'Singapore',
   countryCode: 'SG',

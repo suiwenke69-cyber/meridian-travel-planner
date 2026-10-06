@@ -23,6 +23,14 @@ import {
 } from '../lib/data/index';
 import { readFileSync } from 'node:fs';
 import { HOTEL_BRANDS } from '../lib/data/hotel-brands';
+import {
+  ACTIVITY_KINDS,
+  CUISINES,
+  RECOMMENDED_FOR,
+  getDiscoveryCategory,
+} from '../lib/data/place-taxonomy';
+import { normalizePlaceName } from '../lib/research/normalize';
+import { extractMentions, SAMPLE_GUIDE_TEXT } from '../lib/research/extract';
 import { haversineKm } from '../lib/geo';
 import type { MarkerLayer } from '../lib/types';
 
@@ -209,6 +217,9 @@ for (const destination of DESTINATIONS) {
     }
   }
   for (const place of getAllPlaces().filter((p) => p.destinationId === destination.id)) {
+    // A place still awaiting geocoding sits at 0,0 by design and is handled by
+    // the dedicated unresolved-coordinate rule. Only resolved points are checked.
+    if (place.coordinates.confidence === 'demo') continue;
     if (!inside(place.coordinates)) {
       err(
         `${destination.id}/${place.id}: coordinates ${place.coordinates.lat},${place.coordinates.lng} fall outside the destination's own map bounds`,
@@ -263,6 +274,129 @@ for (const id of listIds(areaBlock)) {
 }
 for (const id of listIds(placeBlock)) {
   if (!known.place.has(id)) err(`fetch-bali-images PLACES: "${id}" is not a place in the dataset`);
+}
+
+/*
+ * --- 5b. canonical place identity ------------------------------------------
+ *
+ * The failure this exists to prevent has a name: La Brisa, La Brisa Bali and
+ * La Brisa Canggu becoming three pins on one roof. The separate id check cannot
+ * see it, because the ids differ — so this compares NORMALISED names within a
+ * destination, and fails when two records reduce to the same identity.
+ *
+ * Places with unresolved coordinates are held to the same rule. "We have not
+ * geocoded it yet" is not a licence to list it twice.
+ */
+const identitySeen = new Map<string, string>();
+for (const place of getAllPlaces()) {
+  if (place.destinationId !== 'bali') continue;
+  const key = `${place.destinationId}:${normalizePlaceName(place.name)}`;
+  const previous = identitySeen.get(key);
+  if (previous && previous !== place.id) {
+    err(
+      `${place.destinationId}: "${place.id}" and "${previous}" normalise to the same place name ` +
+        `("${normalizePlaceName(place.name)}") — the map would show one venue twice`,
+    );
+  }
+  identitySeen.set(key, place.id);
+}
+
+/*
+ * --- 5c. coordinates are either real or explicitly unresolved --------------
+ */
+let unresolvedCount = 0;
+for (const place of getAllPlaces()) {
+  const { lat, lng, confidence } = place.coordinates;
+  if (!finite(lat) || !finite(lng)) {
+    err(`${place.destinationId}/${place.id}: non-finite coordinates`);
+    continue;
+  }
+  const pinpointed = lat !== 0 || lng !== 0;
+  if (!pinpointed) {
+    if (confidence !== 'demo') {
+      err(
+        `${place.destinationId}/${place.id}: coordinates are 0,0 but confidence is "${confidence}" — ` +
+          `an ungeocoded place must be marked demo so the map and the itinerary can exclude it`,
+      );
+    }
+    if (!/PENDING GEOCODE/i.test(place.coordinates.coordNote ?? '')) {
+      warn(`${place.destinationId}/${place.id}: unresolved coordinates without a PENDING GEOCODE note`);
+    }
+    unresolvedCount += 1;
+    continue;
+  }
+  if (place.destinationId === 'bali') {
+    const inBali =
+      lat >= -9.05 && lat <= -7.95 && lng >= 114.35 && lng <= 115.95;
+    if (!inBali) {
+      err(`${place.destinationId}/${place.id}: coordinates ${lat},${lng} are outside Bali`);
+    }
+  }
+}
+
+/*
+ * --- 5d. taxonomy ids used by the data must exist --------------------------
+ *
+ * A typo here removes a place from a category silently: it simply never appears
+ * under 美食, and nothing errors. That is the worst kind of bug to find by hand.
+ */
+for (const place of getAllPlaces()) {
+  for (const id of place.discovery ?? []) {
+    if (!getDiscoveryCategory(id)) err(`${place.destinationId}/${place.id}: discovery id "${id}" is not in the taxonomy`);
+  }
+  for (const id of place.recommendedFor ?? []) {
+    if (!RECOMMENDED_FOR[id]) err(`${place.destinationId}/${place.id}: recommendedFor id "${id}" is not in the taxonomy`);
+  }
+  for (const id of place.dining?.cuisines ?? []) {
+    if (!CUISINES[id]) err(`${place.destinationId}/${place.id}: cuisine id "${id}" is not in the taxonomy`);
+  }
+  if (place.activity && !ACTIVITY_KINDS[place.activity.kind]) {
+    err(`${place.destinationId}/${place.id}: activity kind "${place.activity.kind}" is not in the taxonomy`);
+  }
+  // A place with dining data must be reachable from the food categories, or the
+  // restaurant exists in the data and nowhere in the interface.
+  if (place.dining && !(place.discovery ?? []).some((d) => ['food', 'coffee', 'beachclub', 'nightlife'].includes(d))) {
+    err(`${place.destinationId}/${place.id}: has dining data but no food-related discovery category`);
+  }
+}
+
+/*
+ * --- 5e. the research pipeline must behave on the shipped sample -----------
+ *
+ * This is the only way to exercise extraction and matching in CI: the research
+ * store itself lives in the browser's localStorage. Running the real corpus
+ * through the real extractor catches the two failures that matter — a mention
+ * matched to a place id that does not exist, and the extractor inventing
+ * venues out of ordinary prose.
+ */
+const sampleResult = extractMentions(
+  SAMPLE_GUIDE_TEXT,
+  getAllPlaces()
+    .filter((p) => p.destinationId === 'bali')
+    .map((p) => ({ id: p.id, name: p.name, nameZh: p.nameZh, areaId: p.areaId, discovery: p.discovery, category: p.category })),
+  getAreas('bali').map((a: { id: string; name: string; nameZh?: string }) => ({ id: a.id, name: a.name, nameZh: a.nameZh })),
+);
+const validPlaceIds = new Set(getAllPlaces().map((p) => p.id));
+const validAreaIds = new Set(DESTINATIONS.flatMap((d) => getAreas(d.id)).map((a) => a.id));
+
+for (const mention of sampleResult.mentions) {
+  if (mention.matchedPlaceId && !validPlaceIds.has(mention.matchedPlaceId)) {
+    err(`research: sample extraction matched "${mention.rawPlaceName}" to unknown place "${mention.matchedPlaceId}"`);
+  }
+  if (mention.areaHint && !validAreaIds.has(mention.areaHint)) {
+    err(`research: sample extraction produced unknown areaHint "${mention.areaHint}"`);
+  }
+}
+const normalized = sampleResult.mentions.map((m) => m.normalizedPlaceName);
+const duplicates = normalized.filter((n, i) => normalized.indexOf(n) !== i);
+if (duplicates.length > 0) {
+  err(`research: sample extraction produced duplicate mentions: ${[...new Set(duplicates)].join(', ')}`);
+}
+if (sampleResult.mentions.length === 0) {
+  err('research: the sample guide extracted no mentions at all — the extractor is broken');
+}
+if (sampleResult.mentions.length > 60) {
+  err(`research: the sample guide produced ${sampleResult.mentions.length} mentions, which means the heuristic pass is matching prose`);
 }
 
 // --- 7. destination coverage summary ---------------------------------------

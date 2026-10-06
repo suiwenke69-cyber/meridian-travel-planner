@@ -38,6 +38,7 @@ export default function DestinationMapView({
   const isDesktop = useIsDesktop();
 
   const tab = useUiStore((s) => s.panelTab);
+  const locale = useUiStore((s) => s.locale);
   const doCategory = useUiStore((s) => s.doCategory);
   const exploreScope = useUiStore((s) => s.exploreScope);
   const focusedAreaId = useUiStore((s) => s.selectedAreaId);
@@ -74,7 +75,7 @@ export default function DestinationMapView({
   const { legs } = useDayLegs(tab === 'plan' ? activeDay : null);
 
   const areaNameById = useMemo(
-    () => new Map((bundle?.areas ?? []).map((a) => [a.id, a.name])),
+    () => new Map((bundle?.areas ?? []).map((a) => [a.id, locale === 'zh-CN' && a.nameZh ? a.nameZh : a.name])),
     [bundle],
   );
 

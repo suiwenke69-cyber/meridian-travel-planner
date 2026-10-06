@@ -99,11 +99,11 @@ export default function RegionMapView({
       lng: SINGAPORE_ORIGIN.coordinates.lng,
       layer: 'airport',
       label: t('region.homeAndOrigin'),
-      custom: originVisual(false),
+      custom: originVisual(false, { name: name.primary(SINGAPORE_ORIGIN), meta: t('region.homeAndOrigin') }),
       noTooltip: true,
       zIndexOffset: 1200,
     }),
-    [t],
+    [t, name],
   );
 
   const selectedTarget = useMemo(() => {

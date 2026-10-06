@@ -4,6 +4,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { useMemo, useState } from 'react';
 import type { Area, Coordinates, Hotel, Place } from '@/lib/types';
 import { contentZone } from '@/lib/zone';
+import { useUiStore } from '@/lib/store/ui-store';
 import { useMapEffect } from './MapCanvas';
 
 interface AreaLayerProps {
@@ -89,6 +90,8 @@ export function AreaLayer({
   opacity = 'prominent',
 }: AreaLayerProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Map labels follow the product language, like everything else on the page.
+  const locale = useUiStore((s) => s.locale);
 
   const scopedAreas = useMemo(() => {
     if (!zoneIds) return areas;
@@ -133,7 +136,7 @@ export function AreaLayer({
         type: 'Feature' as const,
         properties: {
           id: area.id,
-          name: area.name,
+          name: locale === 'zh-CN' && area.nameZh ? area.nameZh : area.name,
           state: selected ? 'selected' : active ? 'active' : 'idle',
           contentCount: content.length,
         },
@@ -153,8 +156,8 @@ export function AreaLayer({
         type: 'Feature' as const,
         properties: {
           id: area.id,
-          name: area.name,
-          tagline: area.tagline,
+          name: locale === 'zh-CN' && area.nameZh ? area.nameZh : area.name,
+          tagline: locale === 'zh-CN' && area.taglineZh ? area.taglineZh : area.tagline,
           isStayBase: area.isStayBase ? 1 : 0,
           // Lower rank wins a collision, so the regions a first-time traveller
           // needs to see are placed before the excursion zones.
@@ -164,7 +167,7 @@ export function AreaLayer({
         geometry: { type: 'Point' as const, coordinates: [area.coordinates.lng, area.coordinates.lat] },
       })),
     }),
-    [scopedAreas, selectedAreaId],
+    [scopedAreas, selectedAreaId, locale],
   );
 
   const signature = useMemo(
@@ -173,8 +176,10 @@ export function AreaLayer({
       String(selectedAreaId) +
       activeAreaIds.join(',') +
       // The scope changes which zones exist, so the sources must be rebuilt.
-      (zoneIds ? `#${[...zoneIds].sort().join(',')}` : '#all'),
-    [areas, selectedAreaId, activeAreaIds, zoneIds],
+      (zoneIds ? `#${[...zoneIds].sort().join(',')}` : '#all') +
+      // The label text is baked into the source, so a locale change must rebuild it.
+      `@${locale}`,
+    [areas, selectedAreaId, activeAreaIds, zoneIds, locale],
   );
 
   useMapEffect(

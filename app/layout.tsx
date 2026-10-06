@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { message } from '@/lib/i18n/use-t';
+import { message } from '@/lib/i18n';
 import './globals.css';
 
 /**

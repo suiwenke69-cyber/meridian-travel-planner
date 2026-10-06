@@ -8,6 +8,7 @@ import { destinationStats, getDestinationBundle, getPrimaryAirport } from '@/lib
 import { analyseTrip } from '@/lib/efficiency';
 import { heroImage } from '@/lib/images';
 import { hydrateTripStore, useTripStore } from '@/lib/store/trip-store';
+import { hydrateResearchStore } from '@/lib/research/store';
 import { hydrateUiStore, useUiStore, type PanelTab } from '@/lib/store/ui-store';
 import { useIsDesktop } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,18 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
     );
   }, [trips, activeTripId, destinationId]);
 
+  /*
+   * The research store is hydrated HERE as well as on /research.
+   *
+   * Place cards read aggregated social signals from it. Without this the
+   * destination page starts with an empty store — `skipHydration` means nothing
+   * is read until asked — and every card silently loses its 攻略参考 block, which
+   * is exactly what happened the first time.
+   */
+  useEffect(() => {
+    hydrateResearchStore();
+  }, []);
+
   useEffect(() => {
     if (trip && trip.id !== activeTripId) setActiveTrip(trip.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,6 +99,7 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
 
   const t = useT();
   const name = useName();
+  const locale = useUiStore((s) => s.locale);
   const tab = useUiStore((s) => s.panelTab);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
   const selectedDayId = useUiStore((s) => s.selectedDayId);
@@ -126,7 +140,13 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
   const { destination, hotels, places, areas, airports } = bundle;
   const stats = destinationStats(destination.id);
   const airport = getPrimaryAirport(destination.id);
-  const areaNameById = new Map(areas.map((a) => [a.id, a.name]));
+  /*
+   * Area names as the reader's locale wants them, because this map is what every
+   * panel labels its rows with — the DO area filter, the STAY area chip, the
+   * itinerary subtitles. Building it from the canonical name left every one of
+   * them in English under a Chinese interface.
+   */
+  const areaNameById = new Map(areas.map((a) => [a.id, locale === 'zh-CN' && a.nameZh ? a.nameZh : a.name]));
 
   const airportTransfers = new Map<string, { min: number; max: number }>();
   for (const transfer of airport?.transfers ?? []) {

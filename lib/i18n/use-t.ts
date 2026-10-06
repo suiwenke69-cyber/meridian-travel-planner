@@ -39,10 +39,9 @@ export function useT(): Translator {
   }, [locale]);
 }
 
-/** Non-hook lookup, for code that runs outside React (validators, tests). */
-export function message(locale: Locale, key: MessageKey, params?: MessageParams): string {
-  return translate(locale, CATALOGUES[locale][key] ?? key, params);
-}
+// `message` is re-exported for convenience; the implementation lives in the
+// pure module because server components need it too.
+export { message } from './index';
 
 export interface NameFormatter {
   /** What to show first in this locale. */

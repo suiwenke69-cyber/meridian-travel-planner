@@ -201,7 +201,7 @@ await step('2–3. Southeast Asia map renders with Singapore marked as origin', 
   const originName = (await page.locator('.mm-origin__name').first().innerText()).trim();
   const originMeta = (await page.locator('.mm-origin__meta').first().innerText()).trim();
   check('origin marker present and named', /Singapore/i.test(originName), originName);
-  check('origin labelled as home', /home/i.test(originMeta), originMeta);
+  check('origin labelled as home', /出发地|home/i.test(originMeta), originMeta);
   // Destinations are native vector layers, so they are asserted through the map
   // rather than through DOM pins.
   // Poll rather than sample once: the layers are registered on style load, and
@@ -231,10 +231,10 @@ await step('4–5. Bali selectable; preview appears without leaving the map', as
   const preview = await page.locator('[data-testid="destination-preview"]').innerText();
   check('preview shows Bali', /Bali/i.test(preview));
   check('preview shows the SIN → DPS route', /SIN/.test(preview) && /DPS/.test(preview));
-  check('preview states the flight is direct', /Direct/.test(preview));
+  check('preview states the flight is direct', /直飞|Direct/.test(preview));
   check('preview states approximate flight duration', /2h 35m|2h 55m/.test(preview));
   check('preview shows a readable ideal stay', /4–7 days/.test(preview), firstMatch(preview, /Ideal stay[\s\S]{0,30}/));
-  check('preview shows what the destination is good for', /Good for/i.test(preview));
+  check('preview shows what the destination is good for', /适合|Good for/i.test(preview));
   check('preview shows Marriott inventory', /Marriott Bonvoy/.test(preview));
   check('preview shows Hilton inventory', /Hilton Honors/.test(preview));
   check('preview shows a human-readable route pair', /SIN → DPS/.test(preview));
@@ -301,8 +301,8 @@ await step('8. Area cards carry photography and structured metadata', async () =
   const card = page.locator('[data-testid="area-card-canggu"]');
   check('area card rendered', (await card.count()) === 1);
   const text = await card.innerText();
-  check('area card shows the region name', /Canggu/i.test(text));
-  check('area card shows its tagline', /Surf · Cafés/.test(text), firstMatch(text, /Surf[^\n]*/));
+  check('area card shows the region name', /长谷|Canggu/i.test(text));
+  check('area card shows its tagline', /冲浪 \u00b7 咖啡|Surf \u00b7 Caf/.test(text), firstMatch(text, /[^\n]*冲浪[^\n]*/));
   const images = await card.locator('img').count();
   check('area card shows a photograph', images >= 1, `${images} image(s)`);
   const loaded = await card.locator('img').first().evaluate((el) => el.complete && el.naturalWidth > 0);
@@ -315,9 +315,9 @@ await step('9. Selecting an area focuses the map and opens a visual area card', 
   await page.waitForSelector('[data-testid="area-detail"]', { timeout: 15_000 });
   await page.waitForTimeout(2500);
   const detail = await page.locator('[data-testid="area-detail"]').innerText();
-  check('area detail names the region', /Uluwatu/i.test(detail));
-  check('area detail states what it is best for', /Best for/i.test(detail));
-  check('area detail states what it is less ideal for', /Less ideal/i.test(detail));
+  check('area detail names the region', /乌鲁瓦图|Uluwatu/i.test(detail));
+  check('area detail states what it is best for', /适合|Best for/i.test(detail));
+  check('area detail states what it is less ideal for', /不太适合|Less ideal/i.test(detail));
   check('area detail shows a photo credit', /CC|public domain|Wikimedia/i.test(detail), firstMatch(detail, /[A-Z][^\n]*CC[^\n]*/));
   const zoom = await page.evaluate(() => Number(window.__mmMap.getZoom().toFixed(1)));
   check('the map focuses the area without dropping to street level', zoom >= 9 && zoom <= 12.5, `zoom ${zoom}`);
@@ -463,7 +463,11 @@ await step('15. Every consecutive stop gets a transport leg', async () => {
   check('there is one leg between each pair of stops', legs === stops - 1, `${stops} stops → ${legs} legs`);
 
   const legText = await page.locator('[data-testid^="transport-leg-"]').first().innerText();
-  check('the leg names a transport mode', /Grab|taxi|Private car|Walk|Scooter|Fast boat/i.test(legText), firstMatch(legText, /Grab[^\n]*|Private car[^\n]*|Walk[^\n]*/));
+  check(
+    'the leg names a transport mode',
+    /网约车|包车|步行|摩托车|快艇|Grab|taxi|Private car|Walk|Scooter|Fast boat/i.test(legText),
+    firstMatch(legText, /[^\n]*(网约车|包车|步行)[^\n]*/),
+  );
   check('the leg explains the recommendation', legText.length > 60);
 
   const measured = /OSRM road route|routing engine/.test(legText);
@@ -678,6 +682,148 @@ await step('19. Every other destination loads without crashing', async () => {
   );
   check('no page errors across the other destinations', probeErrors.length === 0, probeErrors.slice(0, 3).join(' | ') || 'none');
   await probe.close();
+});
+
+
+// ---------------------------------------------------------------------------
+// This iteration: Chinese as the primary language, restaurant/activity
+// discovery, and the social-guide research pipeline.
+// ---------------------------------------------------------------------------
+
+await step('20. Chinese is the product language, and English names stay searchable', async () => {
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(9000);
+
+  const tabs = (await page.locator('[data-testid^="dest-tab-"]').allInnerTexts()).map((t) => t.trim());
+  check('the four tabs are Chinese', tabs.join('/') === '探索/住宿/游玩/行程', tabs.join('/'));
+
+  const switcher = page.locator('[data-testid="language-switcher"]');
+  check('a language switcher is present', (await switcher.count()) >= 1);
+
+  // English proper nouns must remain readable: this is what a traveller types
+  // into Google Maps or Grab, so a Chinese-only card would be unusable abroad.
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForTimeout(4000);
+  const cardText = await page.locator('[data-testid^="place-card-"]').first().innerText();
+  check('place cards carry Latin proper nouns alongside Chinese', /[A-Za-z]{4,}/.test(cardText), cardText.slice(0, 60));
+
+  // Switching to English must actually switch the chrome.
+  await page.locator('[data-testid="locale-en"]').first().click();
+  await page.waitForTimeout(2500);
+  const enTabs = (await page.locator('[data-testid^="dest-tab-"]').allInnerTexts()).map((t) => t.trim());
+  check('switching to English relabels the tabs', enTabs.join('/') === 'Explore/Stay/Do/Plan', enTabs.join('/'));
+
+  await page.locator('[data-testid="locale-zh-CN"]').first().click();
+  await page.waitForTimeout(2500);
+  const backTabs = (await page.locator('[data-testid^="dest-tab-"]').allInnerTexts()).map((t) => t.trim());
+  check('switching back restores Chinese', backTabs.join('/') === '探索/住宿/游玩/行程', backTabs.join('/'));
+  await page.screenshot({ path: join(ARTIFACTS, '20-zh-destination.png') });
+});
+
+await step('21. DO filters by Chinese category and by area, together', async () => {
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForTimeout(3500);
+
+  const categories = (await page.locator('[data-testid="do-categories"] button').allInnerTexts()).map((t) =>
+    t.replace(/\s+/g, ''),
+  );
+  check('the category row is Chinese and has 11 entries', categories.length === 11, categories.join(' '));
+  check('it leads with 精选', categories[0].startsWith('精选'), categories[0]);
+  check('it includes 美食 and 咖啡', categories.some((c) => c.startsWith('美食')) && categories.some((c) => c.startsWith('咖啡')));
+
+  await page.locator('[data-testid="do-category-food"]').click();
+  await page.waitForTimeout(3000);
+  const allFood = await page.locator('[data-testid^="place-card-"]').count();
+  check('美食 lists restaurants', allFood >= 20, `${allFood} cards`);
+
+  const areaRow = page.locator('[data-testid="do-areas"] button');
+  check('an area filter row is offered inside the category', (await areaRow.count()) > 3, `${await areaRow.count()} areas`);
+
+  await page.locator('[data-testid="do-area-canggu"]').click();
+  await page.waitForTimeout(3500);
+  const scoped = await page.locator('[data-testid^="place-card-"]').count();
+  check('美食 + 长谷 narrows the list', scoped > 0 && scoped < allFood, `${allFood} → ${scoped}`);
+
+  const firstCard = await page.locator('[data-testid^="place-card-"]').first().innerText();
+  check('restaurant cards show cuisine and meal type', /早午餐|午餐|晚餐|咖啡|巴厘菜|印尼菜|本地/.test(firstCard), firstCard.slice(0, 80));
+
+  // A restaurant must be addable to the itinerary, or discovery is not planning.
+  const add = page.locator('[data-testid^="place-card-"]').first().locator('[data-testid="add-to-trip"]');
+  const needsTrip = page.locator('[data-testid^="place-card-"]').first().locator('[data-testid="add-to-trip-needs-trip"]');
+  check('a restaurant offers an add-to-trip control', (await add.count()) + (await needsTrip.count()) > 0);
+
+  await page.locator('[data-testid="do-area-canggu"]').click();
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: join(ARTIFACTS, '21-zh-do-food.png') });
+});
+
+await step('22. The research inbox imports a guide, extracts places and gates publication', async () => {
+  await page.goto(`${BASE}/research`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('[data-testid="research-add"]', { timeout: 60_000 });
+  await page.waitForTimeout(2500);
+
+  check('the inbox is Chinese', (await page.locator('h1').innerText()).includes('攻略研究'));
+
+  // A URL alone is enough provenance; the text is supplied by the researcher
+  // because these platforms prohibit automated collection.
+  await page.locator('[data-testid="research-url"]').fill('https://www.xiaohongshu.com/explore/e2e-check');
+  await page.waitForTimeout(1200);
+  check('the platform is detected from the URL', /小红书/.test(await page.locator('main').innerText()));
+
+  await page.locator('[data-testid="research-sample"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('[data-testid="research-add"]').click();
+  await page.waitForTimeout(4000);
+
+  const sourceRows = await page.locator('[data-testid^="research-source-"]').count();
+  check('the guide is stored', sourceRows >= 1, `${sourceRows} sources`);
+
+  /*
+   * `[data-testid^="research-mention-"]` also matches the <ul> that wraps the
+   * rows, so the list container is excluded by requiring a row inside it.
+   */
+  const mentions = page.locator('[data-testid="research-mention-list"] > li');
+  const mentionCount = await mentions.count();
+  check('places are extracted from the pasted text', mentionCount >= 8, `${mentionCount} mentions`);
+
+  const listText = await page.locator('[data-testid="research-mention-list"]').innerText();
+  check('a known place is matched to its canonical record', /匹配到|已匹配/.test(listText), listText.slice(0, 80));
+  check('unknown places are flagged for review', /需要确认|待验证/.test(listText));
+
+  await page.screenshot({ path: join(ARTIFACTS, '22-zh-research-inbox.png'), fullPage: true });
+
+  // Nothing is published until a human says so.
+  const acceptedTab = page.locator('[data-testid="research-tab-accepted"]');
+  check('the accepted tab starts empty', /0/.test(await acceptedTab.innerText()), await acceptedTab.innerText());
+
+  const accept = page.locator('[data-testid="research-mention-list"] [data-testid^="research-accept-"]').first();
+  check('a reviewer can accept a mention', (await accept.count()) === 1);
+  await accept.click();
+  await page.waitForTimeout(1500);
+  check('accepting moves it to 已收录', /1/.test(await acceptedTab.innerText()), await acceptedTab.innerText());
+  await page.screenshot({ path: join(ARTIFACTS, '23-zh-research-reviewed.png'), fullPage: true });
+});
+
+await step('23. An accepted mention reaches the traveller as an aggregate signal, not as copied text', async () => {
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(9000);
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForTimeout(4000);
+
+  const signals = page.locator('[data-testid^="place-social-"]');
+  const count = await signals.count();
+  check('places with accepted mentions show a signal block', count > 0, `${count} cards`);
+
+  if (count > 0) {
+    const text = await signals.first().innerText();
+    check('the signal states a count over our own corpus', /在 \d+ 份已收录攻略中被提及/.test(text), text.slice(0, 60));
+    // The honesty rule for this feature: a corpus count, never a popularity claim.
+    check('it makes no popularity claim', !/最热门|全网第一|%\s*推荐|必吃榜/.test(text), text.slice(0, 60));
+    check('it carries a provenance caveat', /不代表全网热度|只作为参考/.test(text));
+  }
+  await page.screenshot({ path: join(ARTIFACTS, '24-zh-social-signal.png') });
 });
 
 // ---------------------------------------------------------------------------

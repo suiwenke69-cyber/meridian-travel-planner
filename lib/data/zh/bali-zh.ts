@@ -704,3 +704,79 @@ export const BALI_PLACE_ZH: Record<string, PlaceZh> = {
     tagsZh: ['接送', '商场', '集合点', '水明漾'],
   },
 };
+
+
+/**
+ * The destination record itself.
+ *
+ * Areas, hotels and places were covered by the first overlay pass; this is the
+ * one entity that was not, and it is the first copy a traveller reads on
+ * EXPLORE. Kept in the same overlay file so all Chinese copy has one home.
+ */
+export const BALI_DESTINATION_ZH = {
+  nameZh: '巴厘岛',
+  countryZh: '印度尼西亚',
+  taglineZh: '一座岛，四种玩法',
+  descriptionZh:
+    '巴厘岛把海滩小镇、冲浪海岸、文化高地和度假区塞进了一座一天就能横穿的岛——所以行程排得好不好，本质上是地理问题。住在哪里，决定了你有多少时间花在路上。',
+};
+
+/**
+ * Destination names and countries for the other nine.
+ *
+ * Only naming is provided: they are starter-scope destinations, and writing
+ * long-form Chinese copy for a destination we do not hold real data for would
+ * be inventing a guide rather than translating one.
+ */
+export const DESTINATION_ZH: Record<string, { nameZh: string; countryZh: string }> = {
+  bali: { nameZh: '巴厘岛', countryZh: '印度尼西亚' },
+  'phu-quoc': { nameZh: '富国岛', countryZh: '越南' },
+  'da-nang-hoi-an': { nameZh: '岘港 · 会安', countryZh: '越南' },
+  'ho-chi-minh-city': { nameZh: '胡志明市', countryZh: '越南' },
+  hanoi: { nameZh: '河内', countryZh: '越南' },
+  'siem-reap': { nameZh: '暹粒', countryZh: '柬埔寨' },
+  'phnom-penh': { nameZh: '金边', countryZh: '柬埔寨' },
+  cebu: { nameZh: '宿务', countryZh: '菲律宾' },
+  boracay: { nameZh: '长滩岛', countryZh: '菲律宾' },
+  palawan: { nameZh: '巴拉望', countryZh: '菲律宾' },
+};
+
+/** Chinese copy for the nine starter destinations, where naming is not enough. */
+export const STARTER_DESTINATION_ZH: Record<string, { taglineZh: string; descriptionZh: string }> = {
+  'phu-quoc': {
+    taglineZh: '免签海岛，直飞一小时五十分',
+    descriptionZh: '越南唯一免签的海岛，从新加坡直飞不到两小时。北部是度假区和国家公园，南部是日落海滩和夜市。适合三四天的短假。',
+  },
+  'da-nang-hoi-an': {
+    taglineZh: '海滩加古城，一趟两种',
+    descriptionZh: '岘港是海滨城市，往南半小时就是会安古城。可以早上在海边，傍晚在灯笼街。适合五天左右。',
+  },
+  'ho-chi-minh-city': {
+    taglineZh: '城市短假，吃和逛为主',
+    descriptionZh: '越南最大的城市，法式建筑、咖啡馆和街头小吃密度很高。没有海滩，两天到四天比较合适。',
+  },
+  hanoi: {
+    taglineZh: '老城、咖啡、下龙湾门户',
+    descriptionZh: '越南首都，老城区适合步行乱逛，咖啡馆和街头小吃是重点。也可以作为去下龙湾的起点。',
+  },
+  'siem-reap': {
+    taglineZh: '吴哥窟所在',
+    descriptionZh: '吴哥遗址的门户城市，看寺庙群至少需要两整天。新机场 SAI 已启用，从新加坡直飞约两小时二十分。',
+  },
+  'phnom-penh': {
+    taglineZh: '中转站，不是度假地',
+    descriptionZh: '柬埔寨首都，多数人只是路过。皇宫和河边可以看半天，本身不是度假目的地。',
+  },
+  cebu: {
+    taglineZh: '潜水与跳岛起点',
+    descriptionZh: '菲律宾中部枢纽，往南是鲸鲨和沙丁鱼风暴，往东是薄荷岛。城市本身一般，重点在周边海岛。',
+  },
+  boracay: {
+    taglineZh: '白沙长滩，商业化程度高',
+    descriptionZh: '以四公里白沙滩出名，日落帆船是招牌。旺季人多、商业气息重，但沙质确实是这一带最好的。',
+  },
+  palawan: {
+    taglineZh: '地下河与泻湖',
+    descriptionZh: '菲律宾西南的长条岛，普林塞萨港是门户。地下河和爱妮岛的泻湖是主要理由，交通需要多留时间。',
+  },
+};

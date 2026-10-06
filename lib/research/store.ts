@@ -180,12 +180,25 @@ export const useResearchStore = create<ResearchStoreState>()(
           };
         });
 
+        /*
+         * One mention per normalised name, per source. The extractor already
+         * dedupes, but this is the boundary that writes to storage, and a second
+         * row for the same venue would double-count in the traveller's signal.
+         */
+        const unique = new Map<string, SocialMention>();
+        for (const mention of next) {
+          if (!unique.has(mention.normalizedPlaceName)) unique.set(mention.normalizedPlaceName, mention);
+        }
+
         set((s) => ({
           sources: s.sources.map((x) => (x.id === id ? { ...x, status: 'extracted', extractedAt: createdAt } : x)),
-          mentions: [...s.mentions.filter((m) => m.sourceId !== id), ...next],
+          mentions: [...s.mentions.filter((m) => m.sourceId !== id), ...unique.values()],
         }));
 
-        return { extracted: next.length, matched: next.filter((m) => m.matchedPlaceId).length };
+        return {
+          extracted: unique.size,
+          matched: [...unique.values()].filter((m) => m.matchedPlaceId).length,
+        };
       },
 
       extractAll: () => {
