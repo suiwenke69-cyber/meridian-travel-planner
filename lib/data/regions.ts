@@ -1,63 +1,19 @@
-import type { Geocoded, Region, RegionId } from '../types';
+import type { Region, RegionId } from '../types';
+
+/*
+ * The origin model used to live here as a single hard-coded Singapore record.
+ * It now lives in `lib/data/origins.ts` as an eleven-city dataset, because
+ * Singapore stopped being the only place a traveller can leave from.
+ */
 
 /**
- * The origin is a first-class entity: this product is built around departures
- * from Singapore. Changi is the default; Seletar is included so the model does
- * not assume a single airport.
+ * Destination regions.
+ *
+ * These group DESTINATIONS on the map. They are deliberately separate from
+ * `ORIGIN_REGIONS` in `lib/data/origins.ts`: 长三角 is a group of departure
+ * cities and Indonesia is a group of destinations, and treating them as one kind
+ * of thing would make both wrong.
  */
-export interface OriginAirport {
-  id: string;
-  code: string;
-  name: string;
-  city: string;
-  country: string;
-  coordinates: Geocoded;
-}
-
-export interface Origin {
-  id: 'singapore';
-  name: string;
-  nameZh?: string;
-  label: string;
-  country: string;
-  countryCode: string;
-  flag: string;
-  coordinates: Geocoded;
-  airports: OriginAirport[];
-  note: string;
-}
-
-export const SINGAPORE_ORIGIN: Origin = {
-  id: 'singapore',
-  name: 'Singapore',
-  nameZh: '新加坡',
-  label: 'Home / Origin',
-  country: 'Singapore',
-  countryCode: 'SG',
-  flag: '🇸🇬',
-  // Marina Bay / civic centre — used as the "you are here" anchor on the region map.
-  coordinates: { lat: 1.3521, lng: 103.8198, confidence: 'verified', coordNote: 'Singapore city centre' },
-  airports: [
-    {
-      id: 'sin',
-      code: 'SIN',
-      name: 'Singapore Changi Airport',
-      city: 'Singapore',
-      country: 'Singapore',
-      coordinates: { lat: 1.3644, lng: 103.9915, confidence: 'verified', coordNote: 'Changi Airport terminals' },
-    },
-    {
-      id: 'xsp',
-      code: 'XSP',
-      name: 'Seletar Airport',
-      city: 'Singapore',
-      country: 'Singapore',
-      coordinates: { lat: 1.4169, lng: 103.8678, confidence: 'verified', coordNote: 'Seletar Aerospace Park' },
-    },
-  ],
-  note: 'Changi (SIN) is the default departure airport for all routes in this planner.',
-};
-
 export const REGIONS: Region[] = [
   { id: 'indonesia', name: 'Indonesia', countryCode: 'ID', flag: '🇮🇩' },
   { id: 'vietnam', name: 'Vietnam', countryCode: 'VN', flag: '🇻🇳' },

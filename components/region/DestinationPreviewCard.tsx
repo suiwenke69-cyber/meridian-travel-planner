@@ -1,12 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import type { Destination } from '@/lib/types';
+import type { Destination, OriginCity } from '@/lib/types';
 import type { DestinationStats } from '@/lib/data';
-import { formatMinutesRange, primaryRouteSummary, SINGAPORE_ORIGIN } from '@/lib/data';
+import { routeSummary } from '@/lib/data';
+import { straightLineKm } from '@/lib/geo';
 import { IconArrowRight, IconClose } from '../ui/icons';
 import { useName, useT, useLocale, type Translator } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
+import { pickList } from '@/lib/i18n';
+
+/** 165–175 minutes as 约 2 小时 45 分 / ≈ 2 h 45 m. */
+function formatDurationBand(
+  t: Translator,
+  min: number,
+  max: number,
+): string {
+  const mid = Math.round((min + max) / 2 / 5) * 5;
+  const h = Math.floor(mid / 60);
+  const m = mid % 60;
+  if (m === 0) return t('duration.hourOnly', { h });
+  return h === 0 ? t('duration.minuteOnly', { m }) : t('duration.hourMinute', { h, m });
+}
 
 /**
  * The stay range in the reader's language.
@@ -33,18 +48,33 @@ function stayRangeLabel(t: Translator, recommended: Destination['recommendedDays
 export function DestinationPreviewCard({
   destination,
   stats,
+  origin,
   onClose,
 }: {
   destination: Destination;
   stats: DestinationStats;
+  origin: OriginCity;
   onClose?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
   const name = useName();
-  const route = primaryRouteSummary(destination);
-  const sin = SINGAPORE_ORIGIN.airports[0];
+  const route = routeSummary(origin.id, destination.id);
   const hasLoyaltyHotels = stats.marriottCount + stats.hiltonCount > 0;
+
+  const originName = locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn;
+  const originCodes = route.originAirports.join(' · ') || origin.airports.map((a) => a.code).join(' · ');
+  const destinationCodes = route.destinationAirports.join(' · ') || '—';
+
+  /*
+   * When we have no connection data, the card still says something true: the
+   * straight-line distance, explicitly labelled as such. It is never dressed up
+   * as a flight time, and no duration is shown at all.
+   */
+  const directKm = Math.round(
+    straightLineKm(origin.coordinates, { lat: destination.coordinates.lat, lng: destination.coordinates.lng }),
+  );
+  const unknown = route.direct === null;
 
   return (
     <article className="panel mm-enter overflow-hidden" data-testid="destination-preview">
@@ -69,32 +99,61 @@ export function DestinationPreviewCard({
         </div>
       </header>
 
-      {/* Route ------------------------------------------------------------ */}
-      <section className="border-t border-line px-4 py-3" aria-label={t('detail.fromSingapore')}>
-        <p className="text-[15px] leading-tight text-ink">
-          <span className="font-semibold">
-            {route.airport?.flightMinutes
-              ? formatMinutesRange(route.airport.flightMinutes.min, route.airport.flightMinutes.max)
-              : '—'}
-          </span>
-          <span className="text-ink-soft"> {t('detail.fromSingapore')}</span>
-        </p>
-        <p className="mt-1 text-[12.5px] leading-snug text-muted">
-          <span className={route.direct ? 'font-medium text-accent' : 'font-medium text-warn'}>
-            {route.direct ? t('region.direct') : t('detail.connectionRequired')}
-          </span>
-          <span className="mx-1.5 text-line-strong" aria-hidden="true">
-            ·
-          </span>
-          <span className="tabular-nums">
-            {sin.code} → {route.airport?.code ?? '—'}
-          </span>
-        </p>
-        {route.airport?.airlines?.length ? (
-          <p className="mt-0.5 text-[11.5px] leading-snug text-faint">
-            {route.airport.airlines.slice(0, 4).join(' · ')}
-          </p>
-        ) : null}
+      {/* Route, as seen from the SELECTED ORIGIN ---------------------------- */}
+      <section className="border-t border-line px-4 py-3" data-testid="preview-route" data-origin={origin.id} data-confidence={route.confidence}>
+        {unknown ? (
+          <>
+            <p className="text-[15px] font-semibold leading-tight text-ink">{t('route.unknown')}</p>
+            <p className="mt-1 text-[12.5px] leading-snug text-muted">
+              <span className="tabular-nums">{originCodes} → {destinationCodes}</span>
+              <span className="mx-1.5 text-line-strong" aria-hidden="true">
+                ·
+              </span>
+              {t('route.straightLine', { distance: t('unit.km', { value: directKm }) })}
+            </p>
+            <p className="mt-0.5 text-[11.5px] leading-snug text-faint">{t('route.unknownHint')}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-[15px] leading-tight text-ink">
+              <span className="font-semibold tabular-nums">
+                {route.durationMinutes
+                  ? t('route.duration', {
+                      duration: formatDurationBand(t, route.durationMinutes.min, route.durationMinutes.max),
+                    })
+                  : '—'}
+              </span>
+              <span className="text-ink-soft"> {t('origin.routeFrom', { origin: originName })}</span>
+            </p>
+            <p className="mt-1 text-[12.5px] leading-snug text-muted">
+              <span className={route.direct ? 'font-medium text-accent' : 'font-medium text-warn'}>
+                {route.direct ? t('route.direct') : t('route.connection')}
+              </span>
+              <span className="mx-1.5 text-line-strong" aria-hidden="true">
+                ·
+              </span>
+              <span className="tabular-nums">{originCodes} → {destinationCodes}</span>
+              {route.confidence === 'approximate' && (
+                <>
+                  <span className="mx-1.5 text-line-strong" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-warn" title={t('route.approximateHint')}>
+                    {t('route.approximate')}
+                  </span>
+                </>
+              )}
+            </p>
+            {route.weekendSuitability !== 'unknown' && (
+              <p className="mt-1 text-[11.5px] leading-snug text-muted">
+                {t(`route.weekend.${route.weekendSuitability}` as MessageKey)}
+              </p>
+            )}
+            <p className="mt-0.5 text-[11px] leading-snug text-faint">
+              {t('route.verifiedAt', { date: route.verifiedAt })} · {t('route.source')}
+            </p>
+          </>
+        )}
       </section>
 
       {/* Stay + character ------------------------------------------------ */}
@@ -108,7 +167,7 @@ export function DestinationPreviewCard({
         <div className="min-w-0">
           <p className="label-caps">{t('region.bestFor')}</p>
           <p className="mt-1 text-[13px] leading-snug text-ink-soft">
-            {destination.bestFor.slice(0, 3).join(' · ')}
+            {pickList(destination.bestForZh, destination.bestFor, locale).slice(0, 3).join(' · ')}
           </p>
         </div>
       </section>
@@ -128,12 +187,11 @@ export function DestinationPreviewCard({
               <span className="mx-1.5 text-line-strong" aria-hidden="true">
                 ·
               </span>
-              <span className="tabular-nums">{stats.placeCount}</span> {t('region.placesMapped')}
+              {t('region.placesMapped', { count: stats.placeCount })}
             </>
           ) : (
             <>
-              {t('region.noLoyaltyHotel')}{' '}
-              <span className="tabular-nums">{stats.placeCount}</span> {t('region.placesMappedStill')}
+              {t('region.noLoyaltyHotel')} {t('region.placesMappedStill', { count: stats.placeCount })}
             </>
           )}
         </p>

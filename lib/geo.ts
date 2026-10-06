@@ -15,6 +15,15 @@ export function haversineKm(a: Coordinates, b: Coordinates): number {
 }
 
 /** Total path length in kilometres. */
+/**
+ * Straight-line distance between two points.
+ *
+ * Named for what it is. It is NEVER a driving distance and never a flight time —
+ * the connection layer shows it only where we have no route data, explicitly
+ * labelled as a straight line.
+ */
+export const straightLineKm = haversineKm;
+
 export function pathLengthKm(points: Coordinates[]): number {
   let total = 0;
   for (let i = 1; i < points.length; i += 1) total += haversineKm(points[i - 1], points[i]);

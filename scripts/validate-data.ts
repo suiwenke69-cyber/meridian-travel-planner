@@ -30,6 +30,13 @@ import {
   getDiscoveryCategory,
 } from '../lib/data/place-taxonomy';
 import { normalizePlaceName } from '../lib/research/normalize';
+import {
+  DEFAULT_ORIGIN_CITY_ID,
+  ORIGIN_CITIES,
+  ORIGIN_REGIONS,
+  getOriginCity,
+} from '../lib/data/origins';
+import { getConnection } from '../lib/data/connections';
 import { extractMentions, SAMPLE_GUIDE_TEXT } from '../lib/research/extract';
 import { haversineKm } from '../lib/geo';
 import type { MarkerLayer } from '../lib/types';
@@ -399,6 +406,167 @@ if (sampleResult.mentions.length > 60) {
   err(`research: the sample guide produced ${sampleResult.mentions.length} mentions, which means the heuristic pass is matching prose`);
 }
 
+/*
+ * --- 6b. origins -----------------------------------------------------------
+ *
+ * The origin side is now a dataset like any other, so it gets the same checks.
+ * The failure modes here are specific: an airport code that is not unique, a
+ * city whose airports list is empty, and — most importantly — a connection that
+ * claims a direct route to a destination id that does not exist, which would
+ * silently attach route data to nothing.
+ */
+const originIds = new Set<string>();
+const airportCodes = new Map<string, string>();
+for (const city of ORIGIN_CITIES) {
+  if (originIds.has(city.id)) err(`duplicate origin city id: ${city.id}`);
+  originIds.add(city.id);
+
+  if (!/^[a-z0-9-]+$/.test(city.id)) err(`origin ${city.id}: id must be kebab-case`);
+  if (!city.cityNameZh || !city.cityNameEn) err(`origin ${city.id}: both names are required`);
+  if (!finite(city.coordinates.lat) || !finite(city.coordinates.lng)) {
+    err(`origin ${city.id}: non-finite coordinates`);
+  }
+  if (city.airports.length === 0) err(`origin ${city.id}: no airports — a city with no airport cannot be an origin`);
+
+  for (const airport of city.airports) {
+    // One code cannot belong to two cities: it is how a traveller identifies the
+    // airport, and it is what the connection table keys on.
+    const owner = airportCodes.get(airport.code);
+    if (owner) err(`airport code ${airport.code} is claimed by both ${owner} and ${city.id}`);
+    airportCodes.set(airport.code, city.id);
+
+    if (airport.code !== airport.code.toUpperCase()) err(`origin ${city.id}: airport code ${airport.code} must be uppercase`);
+    if (!finite(airport.coordinates.lat) || !finite(airport.coordinates.lng)) {
+      err(`origin ${city.id}/${airport.code}: non-finite coordinates`);
+    }
+    if (!airport.nameZh || !airport.nameEn) err(`origin ${city.id}/${airport.code}: both names are required`);
+  }
+
+  for (const nearby of city.nearbyOriginIds) {
+    if (!ORIGIN_CITIES.some((c) => c.id === nearby)) err(`origin ${city.id}: nearbyOriginIds references unknown city ${nearby}`);
+    if (nearby === city.id) err(`origin ${city.id}: lists itself as a nearby origin`);
+  }
+  if (!ORIGIN_REGIONS.some((r) => r.id === city.region)) err(`origin ${city.id}: unknown region ${city.region}`);
+}
+
+if (!originIds.has(DEFAULT_ORIGIN_CITY_ID)) {
+  err(`the default origin "${DEFAULT_ORIGIN_CITY_ID}" is not in the dataset`);
+}
+const defaultOrigin = ORIGIN_CITIES.find((c) => c.id === DEFAULT_ORIGIN_CITY_ID);
+if (defaultOrigin && !defaultOrigin.enabled) err('the default origin is disabled');
+
+/*
+ * --- 6c. connections ------------------------------------------------------
+ *
+ * The honesty rule this protects: a connection must never claim non-stop
+ * service on no data. `directAvailable: null` is the only correct value for a
+ * pair we have not curated, and a curated claim must carry a source and a date
+ * so it can be re-checked rather than quietly ageing.
+ */
+const allDestinationIds = new Set(DESTINATIONS.map((d) => d.id));
+let verifiedConnections = 0;
+let approximateConnections = 0;
+let unknownConnections = 0;
+
+for (const city of ORIGIN_CITIES) {
+  for (const destination of DESTINATIONS) {
+    if (!allDestinationIds.has(destination.id)) continue;
+    const connection = getConnection(city.id, destination.id);
+    if (connection.originCityId !== city.id || connection.destinationId !== destination.id) {
+      err(`connection ${city.id} → ${destination.id}: returned a record for a different pair`);
+    }
+    if (!connection.source) err(`connection ${city.id} → ${destination.id}: missing source provenance`);
+    if (!connection.verifiedAt) err(`connection ${city.id} → ${destination.id}: missing verifiedAt`);
+
+    if (connection.confidence === 'unknown') {
+      unknownConnections += 1;
+      /*
+       * An unknown pair must not carry numbers. A duration with no confidence is
+       * exactly the fabricated precision this layer exists to prevent.
+       */
+      if (connection.approximateFlightDuration) {
+        err(`connection ${city.id} → ${destination.id}: confidence is unknown but a duration is set`);
+      }
+      if (connection.directAvailable !== null) {
+        err(`connection ${city.id} → ${destination.id}: confidence is unknown but directAvailable is ${connection.directAvailable}`);
+      }
+      continue;
+    }
+
+    if (connection.directAvailable === null) {
+      err(`connection ${city.id} → ${destination.id}: confidence is ${connection.confidence} but direct is unknown`);
+    }
+    if (!connection.approximateFlightDuration) {
+      err(`connection ${city.id} → ${destination.id}: confidence is ${connection.confidence} but there is no duration`);
+    }
+    if (connection.approximateFlightDuration) {
+      const { min, max } = connection.approximateFlightDuration;
+      if (min <= 0 || max <= 0) err(`connection ${city.id} → ${destination.id}: non-positive duration`);
+      if (min > max) err(`connection ${city.id} → ${destination.id}: duration min > max`);
+      if (min < 25) err(`connection ${city.id} → ${destination.id}: ${min} min is implausibly short for a flight`);
+    }
+    for (const code of connection.originAirports) {
+      if (!airportCodes.has(code)) err(`connection ${city.id} → ${destination.id}: unknown origin airport code ${code}`);
+      else if (airportCodes.get(code) !== city.id) {
+        err(`connection ${city.id} → ${destination.id}: origin airport ${code} belongs to ${airportCodes.get(code)}`);
+      }
+    }
+    for (const code of connection.destinationAirports) {
+      if (!getAirports(destination.id).some((a) => a.code === code)) {
+        err(`connection ${city.id} → ${destination.id}: unknown destination airport code ${code}`);
+      }
+    }
+    if (connection.confidence === 'verified') verifiedConnections += 1;
+    else approximateConnections += 1;
+  }
+}
+
+/*
+ * The legacy per-airport fields are migrated into connections at load. If any
+ * remain unharvested, an origin would be missing routes it should have — and the
+ * count is the only way to notice.
+ */
+for (const destination of DESTINATIONS) {
+  for (const airport of getAirports(destination.id)) {
+    const legacy = airport.legacyRouteFromOrigin;
+    if (!legacy) continue;
+    const harvested = getConnection(legacy.originCityId, destination.id);
+    if (harvested.confidence === 'unknown') {
+      err(
+        `${destination.id}/${airport.code}: legacy route from ${legacy.originCityId} was not harvested into a connection`,
+      );
+    }
+  }
+}
+
+/*
+ * --- 6d. bestFor translations stay aligned -------------------------------
+ *
+ * `pickList` falls back per index, so a short Chinese array degrades into a line
+ * that is half Chinese and half English. It reads as a bug and nothing else
+ * catches it.
+ */
+for (const destination of DESTINATIONS) {
+  if (destination.bestForZh && destination.bestForZh.length !== destination.bestFor.length) {
+    err(
+      `${destination.id}: bestForZh has ${destination.bestForZh.length} entries but bestFor has ${destination.bestFor.length}`,
+    );
+  }
+}
+for (const area of DESTINATIONS.flatMap((d) => getAreas(d.id))) {
+  if (area.bestForZh && area.bestForZh.length !== area.bestFor.length) {
+    err(`${area.id}: bestForZh length ${area.bestForZh.length} != bestFor length ${area.bestFor.length}`);
+  }
+  if (area.weakForZh && area.weakForZh.length !== area.weakFor.length) {
+    err(`${area.id}: weakForZh length ${area.weakForZh.length} != weakFor length ${area.weakFor.length}`);
+  }
+}
+for (const place of getAllPlaces()) {
+  if (place.tagsZh && place.tagsZh.length !== place.tags.length) {
+    err(`${place.destinationId}/${place.id}: tagsZh length ${place.tagsZh.length} != tags length ${place.tags.length}`);
+  }
+}
+
 // --- 7. destination coverage summary ---------------------------------------
 const summary = DESTINATIONS.map((d) => {
   const stats = destinationStats(d.id);
@@ -440,6 +608,10 @@ console.log(
   `\nTotal: ${totals.destinations} destinations · ${totals.areas} areas · ${totals.hotels} loyalty hotels · ${totals.places} places`,
 );
 console.log(`Places with approximate coordinates: ${totals.approximate}/${totals.places}`);
+console.log(
+  `Origins: ${ORIGIN_CITIES.length} cities, ${airportCodes.size} airports · ` +
+    `connections verified ${verifiedConnections}, approximate ${approximateConnections}, unknown ${unknownConnections}`,
+);
 
 const errors = problems.filter((p) => p.level === 'error');
 const warnings = problems.filter((p) => p.level === 'warn');

@@ -1,16 +1,15 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { Destination } from '@/lib/types';
-import { SINGAPORE_ORIGIN, hasDirectFromSingapore } from '@/lib/data';
-import { formatMinutes } from '@/lib/geo';
+import type { Destination, OriginCity } from '@/lib/types';
+import { routeSummary } from '@/lib/data';
 import MapCanvas from '../map/MapCanvas';
 import MarkersLayer, { type MapMarker } from '../map/MarkersLayer';
 import RegionArcLayer from '../map/RegionArcLayer';
 import DestinationLayer, { type DestinationFeature } from '../map/DestinationLayer';
 import { originVisual } from '../map/marker-icons';
 import { useIsDesktop } from '@/lib/hooks';
-import { useName, useT } from '@/lib/i18n/use-t';
+import { useName, useT, useLocale } from '@/lib/i18n/use-t';
 
 /** Vertical space the collapsed/half/full sheet takes out of the visible map. */
 const SHEET_PADDING = { peek: 190, half: 470, full: 780 } as const;
@@ -19,11 +18,13 @@ const SHEET_PADDING = { peek: 190, half: 470, full: 780 } as const;
  * The Southeast Asia overview map.
  *
  * Destinations are rendered as native vector layers (dot + label), not DOM pins.
- * Only the Singapore origin uses a DOM marker, because it needs a bespoke star.
+ * Only the origin uses a DOM marker, because it needs a bespoke star — and it
+ * now moves with the traveller: pick Guangzhou and the star is in Guangzhou.
  * A single arc is drawn, and only for the selected destination.
  */
 export default function RegionMapView({
   destinations,
+  origin,
   selectedId,
   hoveredId,
   onSelect,
@@ -32,6 +33,7 @@ export default function RegionMapView({
   sheetSnap = 'peek',
 }: {
   destinations: Destination[];
+  origin: OriginCity;
   selectedId: string | null;
   hoveredId: string | null;
   onSelect: (id: string) => void;
@@ -45,6 +47,7 @@ export default function RegionMapView({
   const isDesktop = useIsDesktop();
   const t = useT();
   const name = useName();
+  const locale = useLocale();
 
   /**
    * Region framing is derived from the data, never hard-coded.
@@ -54,7 +57,7 @@ export default function RegionMapView({
    * destination means adding Bangkok or Mauritius later just works.
    */
   const regionBounds = useMemo<[[number, number], [number, number]]>(() => {
-    const points = [SINGAPORE_ORIGIN.coordinates, ...destinations.map((d) => d.coordinates)];
+    const points = [origin.coordinates, ...destinations.map((d) => d.coordinates)];
     const lats = points.map((p) => p.lat);
     const lngs = points.map((p) => p.lng);
     const minLat = Math.min(...lats);
@@ -67,43 +70,57 @@ export default function RegionMapView({
       [minLat - padLat, minLng - padLng],
       [maxLat + padLat, maxLng + padLng],
     ];
-  }, [destinations]);
+  }, [destinations, origin]);
 
   const features = useMemo<DestinationFeature[]>(
     () =>
       destinations.map((destination) => {
-        const airport = destination.airports.find((a) => a.role === 'primary') ?? destination.airports[0];
-        const direct = hasDirectFromSingapore(destination);
-        const duration = airport?.flightMinutes
-          ? formatMinutes((airport.flightMinutes.min + airport.flightMinutes.max) / 2)
+        const route = routeSummary(origin.id, destination.id);
+        /*
+         * Three honest states, three different labels.
+         *
+         * `null` direct is UNKNOWN, not "no". Rendering it as 需转机 would
+         * assert a connection we have no data for, which is the failure this
+         * whole layer exists to avoid.
+         */
+        const status =
+          route.direct === true
+            ? t('route.direct')
+            : route.direct === false
+              ? t('route.connection')
+              : t('route.unknown');
+        const duration = route.durationMinutes
+          ? `${Math.round((route.durationMinutes.min + route.durationMinutes.max) / 2)} min`
           : null;
-        const meta = [duration, direct ? t('region.direct') : t('region.oneStop')]
-          .filter(Boolean)
-          .join(' · ');
+        const meta = [duration, status].filter(Boolean).join(' · ');
         return {
           id: destination.id,
           name: name.primary(destination),
-          country: destination.country,
+          country:
+            locale === 'zh-CN' ? (destination.countryZh ?? destination.country) : destination.country,
           meta,
           lat: destination.coordinates.lat,
           lng: destination.coordinates.lng,
         };
       }),
-    [destinations, t, name],
+    [destinations, origin.id, t, name, locale],
   );
 
   const originMarker = useMemo<MapMarker>(
     () => ({
       id: '__origin__',
-      lat: SINGAPORE_ORIGIN.coordinates.lat,
-      lng: SINGAPORE_ORIGIN.coordinates.lng,
+      lat: origin.coordinates.lat,
+      lng: origin.coordinates.lng,
       layer: 'airport',
       label: t('region.homeAndOrigin'),
-      custom: originVisual(false, { name: name.primary(SINGAPORE_ORIGIN), meta: t('region.homeAndOrigin') }),
+      custom: originVisual(false, {
+        name: locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn,
+        meta: t('origin.label'),
+      }),
       noTooltip: true,
       zIndexOffset: 1200,
     }),
-    [t, name],
+    [t, origin, locale],
   );
 
   const selectedTarget = useMemo(() => {
@@ -117,7 +134,9 @@ export default function RegionMapView({
       zoom={5}
       bounds={regionBounds}
       fitBounds
-      fitKey={`sea-${isDesktop ? 'desktop' : sheetSnap}`}
+      // Refit when the origin changes: the viewport must contain the star AND
+      // the destinations, and that extent is different for every origin.
+      fitKey={`sea-${origin.id}-${isDesktop ? 'desktop' : sheetSnap}`}
       /*
        * minZoom must stay below the fitted zoom for the narrowest viewport.
        * At 4 the phone fit was clamped, the region overflowed the canvas and
@@ -136,11 +155,13 @@ export default function RegionMapView({
        */
       fitPaddingBottom={isDesktop ? 0 : SHEET_PADDING[sheetSnap]}
       fitMaxZoom={6.6}
-      ariaLabel={t('region.mapAria')}
+      ariaLabel={t('origin.mapAria', {
+        origin: locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn,
+      })}
       zoomControlPosition="bottom-right"
       onBackgroundClick={onBackgroundClick}
     >
-      <RegionArcLayer target={selectedTarget} />
+      <RegionArcLayer origin={origin.coordinates} target={selectedTarget} />
       <DestinationLayer
         destinations={features}
         selectedId={selectedId}

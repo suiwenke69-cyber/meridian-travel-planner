@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { Destination, LoyaltyProgrammeId, PriceTier, TravelStyle, Trip } from '@/lib/types';
 import { formatDateLong, inclusiveDayCount, nightCount } from '@/lib/date';
 import { MAX_TRIP_DAYS, createTrip } from '@/lib/trip';
+import { useOriginStore } from '@/lib/store/origin-store';
 import { PRICE_TIERS } from '@/lib/filters';
 import { useName, useT } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
@@ -108,7 +109,18 @@ export function TripSetupForm({
       selectDay(trip.days[0]?.id ?? null);
     } else {
       const created = createTripAction(
-        { destinationId: destination.id, arrivalDate: arrival, departureDate: departure, travellers, styles, budget, loyalty },
+        {
+          destinationId: destination.id,
+          // A trip is FROM somewhere. The origin is stamped at creation and the
+          // airport leg is measured from it, so it must not be assumed later.
+          originCityId: useOriginStore.getState().originCityId,
+          arrivalDate: arrival,
+          departureDate: departure,
+          travellers,
+          styles,
+          budget,
+          loyalty,
+        },
         destination,
       );
       selectDay(created.days[0]?.id ?? null);

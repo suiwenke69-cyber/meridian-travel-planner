@@ -1,16 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import type { Destination } from '@/lib/types';
 import {
   DESTINATIONS,
-  SINGAPORE_ORIGIN,
   destinationStats,
-  hasDirectFromSingapore,
-  primaryRouteSummary,
+  getOriginCity,
+  routeSummary,
 } from '@/lib/data';
+import { useOriginStore, hydrateOriginStore } from '@/lib/store/origin-store';
+import { OriginSelector } from './OriginSelector';
 
 import { cn } from '@/lib/utils';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
@@ -79,13 +80,30 @@ export default function RegionExplorer() {
   const isDesktop = useIsDesktop();
   const t = useT();
   const name = useName();
+  const locale = useLocale();
+  const originCityId = useOriginStore((s) => s.originCityId);
+  const origin = getOriginCity(originCityId) ?? getOriginCity('singapore')!;
 
+  // The origin is read from localStorage, so it arrives after mount.
+  useEffect(() => {
+    hydrateOriginStore();
+  }, []);
+
+  /*
+   * Filters are relative to the ORIGIN, not to a fixed notion of closeness.
+   *
+   * "直飞" now means non-stop from the city you are actually leaving from, and
+   * "周末" uses the curated weekend judgement for that pair. A destination with
+   * no connection record is excluded from 直飞 — we cannot claim non-stop
+   * service we have no data for — but it stays visible under 全部.
+   */
   const destinations = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return DESTINATIONS.filter((destination) => {
-      if (filter === 'direct' && !hasDirectFromSingapore(destination)) return false;
+      const route = routeSummary(origin.id, destination.id);
+      if (filter === 'direct' && route.direct !== true) return false;
       if (filter === 'beach' && !destination.tags.includes('Beach')) return false;
-      if (filter === 'weekend' && destination.recommendedDays.ideal > 4) return false;
+      if (filter === 'weekend' && !['good', 'possible'].includes(route.weekendSuitability)) return false;
       if (!needle) return true;
       return (
         destination.name.toLowerCase().includes(needle) ||
@@ -94,7 +112,7 @@ export default function RegionExplorer() {
         destination.tags.some((tag) => tag.toLowerCase().includes(needle))
       );
     });
-  }, [query, filter]);
+  }, [query, filter, origin.id]);
 
   const selected = useMemo(() => DESTINATIONS.find((d) => d.id === selectedId) ?? null, [selectedId]);
   const stats = useMemo(() => (selected ? destinationStats(selected.id) : null), [selected]);
@@ -107,6 +125,7 @@ export default function RegionExplorer() {
   const rail = (
     <DestinationRail
       destinations={destinations}
+      originId={origin.id}
       selectedId={selectedId}
       hoveredId={hoveredId}
       query={query}
@@ -126,6 +145,7 @@ export default function RegionExplorer() {
         <div className="absolute inset-0">
           <RegionMapView
             destinations={DESTINATIONS}
+            origin={origin}
             selectedId={selectedId}
             hoveredId={hoveredId}
             onSelect={handleSelect}
@@ -152,14 +172,16 @@ export default function RegionExplorer() {
                     {name.primary(selected)}
                   </span>
                   <span className="truncate text-2xs text-muted">
-                    {primaryRouteSummary(selected).durationLabel}
+                    {t('origin.routeFrom', { origin: locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn })}
                   </span>
                 </div>
               ) : (
-                <div className="min-w-0">
-                  <span className="block text-sm font-semibold tracking-tight">{t('region.title')}</span>
-                  <span className="block truncate text-2xs text-muted">
-                    {t('region.destinations', { count: DESTINATIONS.length })}
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold tracking-tight">{t('region.title')}</span>
+                    <span className="block truncate text-2xs text-muted">
+                      {t('region.destinations', { count: DESTINATIONS.length })}
+                    </span>
                   </span>
                 </div>
               )
@@ -170,6 +192,7 @@ export default function RegionExplorer() {
                 <DestinationPreviewCard
                   destination={selected}
                   stats={stats}
+                  origin={origin}
                   onClose={() => setSelectedId(null)}
                 />
               </div>
@@ -185,6 +208,7 @@ export default function RegionExplorer() {
               <DestinationPreviewCard
                 destination={selected}
                 stats={stats}
+                origin={origin}
                 onClose={() => setSelectedId(null)}
               />
             </div>
@@ -214,11 +238,15 @@ function TopBar() {
         </span>
       </Link>
       <div className="ml-auto flex items-center gap-1.5">
-        <LanguageSwitcher compact />
-        <span className="ml-1 hidden text-[11px] tracking-tight text-muted sm:inline">
-          {t('region.originLabel')}{' '}
-          <span className="font-semibold text-ink-soft">{SINGAPORE_ORIGIN.airports[0].code}</span>
+        {/*
+          The origin lives in the top bar because it is the one piece of context
+          that changes what every number on the page means. It used to be the
+          fixed text "出发地 SIN"; it is now the control that decides it.
+        */}
+        <span className="hidden sm:block">
+          <OriginSelector />
         </span>
+        <LanguageSwitcher compact />
         {/*
           Data provenance lives behind a small affordance rather than in the
           primary interface. The product should read as finished; the honesty
@@ -252,6 +280,7 @@ function TopBar() {
 
 function DestinationRail({
   destinations,
+  originId,
   selectedId,
   hoveredId,
   query,
@@ -262,6 +291,7 @@ function DestinationRail({
   onHover,
 }: {
   destinations: Destination[];
+  originId: string;
   selectedId: string | null;
   hoveredId: string | null;
   query: string;
@@ -275,6 +305,14 @@ function DestinationRail({
   return (
     <div className="panel flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="destination-rail">
       <div className="shrink-0 px-3 pb-2.5 pt-3">
+        {/*
+          The origin control appears here as well as in the top bar, because on a
+          phone the top bar hides it and changing where you are leaving from is
+          not a secondary action — it is the first decision in the product.
+        */}
+        <div className="mb-2.5 flex sm:hidden">
+          <OriginSelector align="left" testId="origin-trigger-mobile" />
+        </div>
         <label className="relative block">
           <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
           <input
@@ -331,6 +369,7 @@ function DestinationRail({
               <li key={destination.id}>
                 <DestinationRow
                   destination={destination}
+                  originId={originId}
                   active={destination.id === selectedId}
                   hovered={destination.id === hoveredId}
                   onSelect={onSelect}
@@ -355,24 +394,32 @@ function DestinationRow({
   hovered,
   onSelect,
   onHover,
+  originId,
 }: {
   destination: Destination;
   active: boolean;
   hovered: boolean;
+  originId: string;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
 }) {
   const t = useT();
   const name = useName();
   const locale = useLocale();
-  const route = primaryRouteSummary(destination);
+  const route = routeSummary(originId, destination.id);
   // A single typical block time. The full range is on the preview card — a
   // range in the rail pushed the country line into an ellipsis for no gain.
-  const duration = route.airport?.flightMinutes
+  const duration = route.durationMinutes
     ? `≈${formatDurationCompact(
-        Math.round((route.airport.flightMinutes.min + route.airport.flightMinutes.max) / 10) * 5,
+        Math.round((route.durationMinutes.min + route.durationMinutes.max) / 10) * 5,
       )}`
     : null;
+  const routeLabel =
+    route.direct === true
+      ? t('route.direct')
+      : route.direct === false
+        ? t('route.connection')
+        : t('route.unknown');
 
   return (
     <button
@@ -406,10 +453,14 @@ function DestinationRow({
         <span
           className={cn(
             'mt-[3px] block text-[11px] leading-tight',
-            route.direct ? 'font-medium text-accent' : 'text-faint',
+            route.direct === true
+              ? 'font-medium text-accent'
+              : route.direct === false
+                ? 'font-medium text-warn'
+                : 'text-faint',
           )}
         >
-          {route.direct ? t('region.direct') : t('region.oneStop')}
+          {routeLabel}
         </span>
       </span>
       <IconArrowRight

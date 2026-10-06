@@ -188,6 +188,27 @@ export const useTripStore = create<TripStoreState>()(
       storage: createJSONStorage(() => localStorage),
       // Manual hydration keeps server and first client render identical.
       skipHydration: true,
+      /*
+       * MIGRATION
+       * ---------
+       * Version 0 stored no origin, because Singapore was the only place a trip
+       * could start from. Every such trip was in fact made from Singapore, so
+       * the migration stamps `singapore` rather than leaving the field empty —
+       * an empty origin would show "出发地 —" on an itinerary that is otherwise
+       * perfectly readable.
+       *
+       * Nothing else changes: the days, the items and the dates are untouched,
+       * and a trip that already has an origin keeps it.
+       */
+      version: 1,
+      migrate: (persisted, version) => {
+        const state = persisted as { trips?: Trip[]; activeTripId?: string | null } | undefined;
+        if (!state?.trips || version >= 1) return persisted as never;
+        return {
+          ...state,
+          trips: state.trips.map((trip) => ({ ...trip, originCityId: trip.originCityId ?? 'singapore' })),
+        } as never;
+      },
       partialize: (state) => ({
         trips: state.trips,
         activeTripId: state.activeTripId,
@@ -202,6 +223,22 @@ export const useTripStore = create<TripStoreState>()(
 export async function hydrateTripStore() {
   try {
     await useTripStore.persist.rehydrate();
+
+    /*
+     * Belt and braces on the migration.
+     *
+     * zustand runs `migrate` only when the stored version is older than the
+     * configured one, and a payload written before versioning existed has no
+     * version field at all. This second pass catches any trip that still has no
+     * origin — whatever the reason — so the UI never has to render a trip
+     * without one.
+     */
+    const { trips } = useTripStore.getState();
+    if (trips.some((trip) => !trip.originCityId)) {
+      useTripStore.setState({
+        trips: trips.map((trip) => (trip.originCityId ? trip : { ...trip, originCityId: 'singapore' })),
+      });
+    }
   } catch {
     // Private browsing / storage disabled: the app still works, just without
     // persistence across refreshes.

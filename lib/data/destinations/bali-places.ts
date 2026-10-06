@@ -267,10 +267,17 @@ export const baliAirports: Airport[] = [
     city: "Denpasar / Tuban",
     coordinates: { lat: -8.74806, lng: 115.1675, confidence: "verified", coordNote: "Airport reference point (Wikidata Q1061846 P625; Wikipedia 'Ngurah Rai International Airport'); OSM aerodrome way 82162575 centres at -8.7465, 115.1674" },
     role: 'primary',
-    directFromSingapore: true,
-    flightMinutes: { min: 155, max: 175 },
-    airlines: ["Singapore Airlines","Garuda Indonesia","Jetstar Asia","Scoot","Batik Air","Indonesia AirAsia"],
-    flightNote: "Non-stop service from Singapore Changi runs many times daily. Block time is roughly 2 h 35 m to 2 h 55 m depending on aircraft and winds. Sample schedule data — verify before booking.",
+    /*
+     * Authored against a single origin. Harvested into an OriginDestinationConnection
+     * by lib/data/connections.ts and read by nothing else.
+     */
+    legacyRouteFromOrigin: {
+      originCityId: 'singapore',
+      direct: true,
+        flightMinutes: { min: 155, max: 175 },
+        airlines: ["Singapore Airlines","Garuda Indonesia","Jetstar Asia","Scoot","Batik Air","Indonesia AirAsia"],
+        note: "Non-stop service from Singapore Changi runs many times daily. Block time is roughly 2 h 35 m to 2 h 55 m depending on aircraft and winds. Sample schedule data — verify before booking.",
+    },
     transfers: [
       { areaId: "kuta-legian", minutesMin: 15, minutesMax: 40, note: "Traffic dependent; the closest resort strip to the terminal", confidence: 'approximate' },
       { areaId: "jimbaran", minutesMin: 20, minutesMax: 45, note: "Traffic dependent", confidence: 'approximate' },

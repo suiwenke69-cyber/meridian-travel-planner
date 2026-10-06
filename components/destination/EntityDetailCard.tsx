@@ -1,7 +1,8 @@
 'use client';
 
 import type { Airport, Hotel, HotelStyle, Place, PlaceImage, PropertyType } from '@/lib/types';
-import { findEntity, getDestination } from '@/lib/data';
+import { findEntity, getDestination, getOriginCity, routeSummary } from '@/lib/data';
+import { useOriginStore } from '@/lib/store/origin-store';
 import { getHotelBrand } from '@/lib/data/hotel-brands';
 import { heroImage, imagesByRole } from '@/lib/images';
 import { useLocale, useName, useT, type NameFormatter, type Translator } from '@/lib/i18n/use-t';
@@ -187,7 +188,7 @@ export function EntityDetailCard({
       <div className="px-4 pb-4">
         {kind === 'hotel' && <HotelFacts hotel={entity.hotel} />}
         {kind === 'place' && <PlaceFacts place={entity.place} />}
-        {kind === 'airport' && <AirportFacts airport={entity.airport} />}
+        {kind === 'airport' && <AirportFacts airport={entity.airport} destinationId={destinationId} />}
 
         {kind === 'hotel' && (
           <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
@@ -362,21 +363,40 @@ function PlaceFacts({ place }: { place: Place }) {
   );
 }
 
-function AirportFacts({ airport }: { airport: Airport }) {
+/**
+ * Airport facts, as seen from the traveller's own departure city.
+ *
+ * This used to read `airport.directFromSingapore` — so a traveller leaving
+ * Guangzhou was told about Singapore's non-stop service. The route now comes
+ * from the connection layer, and when there is no record it says so rather than
+ * guessing.
+ */
+function AirportFacts({ airport, destinationId }: { airport: Airport; destinationId: string }) {
   const t = useT();
+  const locale = useLocale();
+  const originCityId = useOriginStore((s) => s.originCityId);
+  const origin = getOriginCity(originCityId);
+  const route = routeSummary(originCityId, destinationId);
+  const originName = origin ? (locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn) : '—';
+
+  const routeLabel =
+    route.direct === true
+      ? t('route.direct')
+      : route.direct === false
+        ? t('route.connection')
+        : t('route.unknown');
+
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-y border-line py-3">
-      <Fact
-        label={t('detail.fromSingapore')}
-        value={airport.directFromSingapore ? t('detail.nonStop') : t('detail.connectionRequired')}
-      />
-      {airport.flightMinutes && (
+      <Fact label={t('origin.label')} value={originName} />
+      <Fact label={t('route.verified')} value={routeLabel} />
+      {route.durationMinutes && (
         <Fact
           label={t('detail.blockTime')}
-          value={`${formatDuration(t, airport.flightMinutes.min)}–${formatDuration(t, airport.flightMinutes.max)}`}
+          value={`${formatDuration(t, route.durationMinutes.min)}–${formatDuration(t, route.durationMinutes.max)}`}
         />
       )}
-      {airport.airlines && <Fact label={t('detail.carriers')} value={airport.airlines.slice(0, 3).join(' · ')} />}
+      <Fact label={t('label.airport')} value={airport.code} />
     </dl>
   );
 }

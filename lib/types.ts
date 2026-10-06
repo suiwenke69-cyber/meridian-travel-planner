@@ -94,16 +94,30 @@ export interface Airport {
   /** IATA code, e.g. DPS. */
   code: string;
   name: string;
+  nameZh?: string;
   city: string;
   coordinates: Geocoded;
   role: 'primary' | 'secondary';
-  /** True when a scheduled non-stop service from Singapore exists. */
-  directFromSingapore: boolean;
-  /** Block-time band in minutes. Sample data, not a live schedule. */
-  flightMinutes?: { min: number; max: number };
-  /** Recurring carriers observed on the route. Sample data. */
-  airlines?: string[];
-  flightNote?: string;
+  /**
+   * @deprecated Flight metadata authored against a single origin.
+   *
+   * Whether a route is non-stop, how long it takes and who flies it are
+   * properties of an (origin, destination-airport) PAIR — not of the
+   * destination airport. Several origins now reach the same airport by
+   * different routes, and a boolean called "directFromSingapore" cannot express
+   * that.
+   *
+   * These fields are harvested exactly once, by `lib/data/connections.ts`, into
+   * `OriginDestinationConnection` records. Nothing else reads them. A new origin
+   * adds connections; it must not add fields here.
+   */
+  legacyRouteFromOrigin?: {
+    originCityId: string;
+    direct: boolean;
+    flightMinutes?: { min: number; max: number };
+    airlines?: string[];
+    note?: string;
+  };
   /** Minutes from the airport to each area, by road. Ranges absorb traffic. */
   transfers?: AirportTransfer[];
 }
@@ -202,6 +216,8 @@ export interface Destination {
   recommendedDays: { min: number; ideal: number; max: number };
   tags: string[];
   bestFor: string[];
+  /** Chinese for `bestFor`, positionally aligned; falls back when shorter. */
+  bestForZh?: string[];
   currency: string;
   timezone: string;
   language: string;
@@ -680,6 +696,14 @@ export type LoyaltyProgrammeId = 'marriott-bonvoy' | 'hilton-honors';
 
 export interface Trip {
   id: string;
+  /**
+   * The city this trip departs from.
+   *
+   * Optional on the type because trips saved before origins existed do not have
+   * it; the trip store migrates those to `singapore`, which is where every such
+   * trip was in fact made from. New trips always set it.
+   */
+  originCityId?: string;
   name: string;
   destinationId: string;
   /** ISO `yyyy-mm-dd`. */
@@ -697,6 +721,8 @@ export interface Trip {
 /** Everything the trip store needs to create a trip. */
 export interface TripDraft {
   destinationId: string;
+  /** Where the traveller is leaving from. Defaults to the selected origin. */
+  originCityId?: string;
   arrivalDate: string;
   departureDate: string;
   travellers: number;
@@ -828,6 +854,107 @@ export interface RoutingProvider {
   /** Free-form cost/limits note shown in the transport panel. */
   costNote: string;
   route(request: RouteRequest): Promise<RouteResult>;
+}
+
+// ---------------------------------------------------------------------------
+// Origins
+// ---------------------------------------------------------------------------
+//
+// The origin is a first-class entity, on the same footing as a destination.
+// Singapore is one supported origin, not an assumption baked into the product.
+
+export type OriginRegionId =
+  | 'singapore'
+  | 'greater-bay'
+  | 'yangtze-delta'
+  | 'china-other'
+  | 'southeast-asia';
+
+/**
+ * Where an origin came from.
+ *
+ * V1 ships curated cities only. This exists so that "search any city" and
+ * "this is my home" can be added later without changing the shape of anything.
+ */
+export type OriginSource = 'curated' | 'search' | 'user';
+
+export interface OriginAirport {
+  id: string;
+  /** IATA code, e.g. CAN. */
+  code: string;
+  nameZh: string;
+  nameEn: string;
+  coordinates: Geocoded;
+  type: 'international' | 'regional';
+}
+
+export interface OriginCity {
+  id: string;
+  cityNameZh: string;
+  cityNameEn: string;
+  /** Country name in Chinese; the canonical English sits on `countryEn`. */
+  country: string;
+  countryEn: string;
+  countryCode: string;
+  region: OriginRegionId;
+  coordinates: Geocoded;
+  /**
+   * Every airport that could serve this city.
+   *
+   * Deliberately a list: Shanghai has PVG and SHA, Beijing has PEK and PKX,
+   * Bangkok has BKK and DMK. One city does not mean one airport, and a model
+   * that assumed it would have to be rewritten to add the second.
+   */
+  airports: OriginAirport[];
+  timezone: string;
+  /**
+   * Other origins close enough to be a plausible alternative departure point.
+   *
+   * The architecture for 考虑附近机场. V1 does not act on it — it exists so the
+   * shape does not have to change when it does.
+   */
+  nearbyOriginIds: string[];
+  enabled: boolean;
+  source: OriginSource;
+  note?: string;
+}
+
+/**
+ * What we actually know about getting from one origin to one destination.
+ *
+ * THE HONESTY RULE
+ * ----------------
+ * `directAvailable` is `boolean | null`, and `null` means UNKNOWN. It does not
+ * mean "no". A destination with no connection record, or a record whose
+ * confidence is `unknown`, renders as 航班信息待确认 — never as a guessed
+ * duration and never as a claim of non-stop service.
+ */
+export interface OriginDestinationConnection {
+  originCityId: string;
+  destinationId: string;
+  /** `null` when we do not know. Never inferred from distance. */
+  directAvailable: boolean | null;
+  /** Block-time band in minutes, or `null` when unavailable. Not a live schedule. */
+  approximateFlightDuration: { min: number; max: number } | null;
+  /** Airport codes on the origin side that serve this pair. */
+  originAirports: string[];
+  /** Airport codes on the destination side. */
+  destinationAirports: string[];
+  typicalTransportMode: 'flight' | 'flight-connection' | 'unknown';
+  /**
+   * Whether this is a realistic weekend trip FROM THIS ORIGIN.
+   *
+   * Origin-dependent by nature: Singapore → Phuket is a weekend; Shanghai →
+   * Bali is not. Never derived from distance alone — only populated where the
+   * judgement is defensible, and `unknown` otherwise.
+   */
+  weekendSuitability: 'good' | 'possible' | 'not-ideal' | 'unknown';
+  /** Where this came from, in words a reviewer can check. */
+  source: string;
+  /** ISO date. Connection data must not become timeless hard-coded truth. */
+  verifiedAt: string;
+  confidence: DataConfidence | 'unknown';
+  note?: string;
 }
 
 // ---------------------------------------------------------------------------

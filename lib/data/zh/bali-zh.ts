@@ -722,6 +722,16 @@ export const BALI_DESTINATION_ZH = {
 };
 
 /**
+ * Destination-level Chinese copy for Bali.
+ *
+ * `bestFor` is positionally aligned with the English array on the record, like
+ * every other bilingual list in this overlay.
+ */
+export const BALI_DESTINATION_BESTFOR_ZH = [
+  '海滩', '冲浪', '夜生活', '度假酒店', '文化', '情侣', 'Wellness',
+];
+
+/**
  * Destination names and countries for the other nine.
  *
  * Only naming is provided: they are starter-scope destinations, and writing
@@ -779,4 +789,26 @@ export const STARTER_DESTINATION_ZH: Record<string, { taglineZh: string; descrip
     taglineZh: '地下河与泻湖',
     descriptionZh: '菲律宾西南的长条岛，普林塞萨港是门户。地下河和爱妮岛的泻湖是主要理由，交通需要多留时间。',
   },
+};
+
+
+/**
+ * `bestFor` for the nine starter destinations, positionally aligned.
+ *
+ * Only the shared vocabulary is translated; proper nouns (Surf, Wellness) stay
+ * as they are used.
+ */
+export const STARTER_DESTINATION_BESTFOR_ZH: Record<string, string[]> = {
+  // Positionally aligned with each destination's English `bestFor`, index for
+  // index. The renderer falls back per-index, but a mismatch would silently show
+  // an English word in the middle of a Chinese line.
+  'phu-quoc': ['海滩', '度假酒店', '情侣', '亲子'],
+  'da-nang-hoi-an': ['海滩', '美食', '文化', '情侣', '亲子'],
+  'ho-chi-minh-city': ['美食', '城市短假', '文化', '夜生活', '购物'],
+  hanoi: ['文化', '美食', '历史', '城市短假'],
+  'siem-reap': ['寺庙', '文化', '历史', '摄影', '情侣'],
+  'phnom-penh': ['历史', '城市短假', '文化', '美食'],
+  cebu: ['潜水', '海滩', '历史', '亲子', '户外'],
+  boracay: ['海滩', '夜生活', '情侣', '风筝冲浪', '亲子'],
+  palawan: ['海滩', '跳岛', '自然', '潜水', '情侣'],
 };

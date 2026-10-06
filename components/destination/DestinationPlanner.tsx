@@ -9,12 +9,14 @@ import { analyseTrip } from '@/lib/efficiency';
 import { heroImage } from '@/lib/images';
 import { hydrateTripStore, useTripStore } from '@/lib/store/trip-store';
 import { hydrateResearchStore } from '@/lib/research/store';
+import { hydrateOriginStore } from '@/lib/store/origin-store';
 import { hydrateUiStore, useUiStore, type PanelTab } from '@/lib/store/ui-store';
 import { useIsDesktop } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { useT, useName } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
+import { OriginSelector } from '../region/OriginSelector';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
 import { ImageFrame } from '../ui/ImageFrame';
 import { IconArrowLeft, IconInfo } from '../ui/icons';
@@ -90,6 +92,9 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
    */
   useEffect(() => {
     hydrateResearchStore();
+    // The destination page reads the origin too: the airport card describes the
+    // route from where the traveller is actually leaving from.
+    hydrateOriginStore();
   }, []);
 
   useEffect(() => {
@@ -234,6 +239,13 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/*
+            The origin follows the traveller into the destination: the airport
+            card describes the route from where they are actually leaving from,
+            and the trip stores it. Changing it here is the same action as on the
+            homepage, so the control is the same control.
+          */}
+          <OriginSelector />
           <LanguageSwitcher compact />
           {trip && (
             <span className="hidden whitespace-nowrap text-[11px] text-muted md:inline">

@@ -1,4 +1,16 @@
-import type { Airport, Area, AreaSeed, Destination, DestinationSeed, Hotel, HotelSeed, Place, PlaceSeed } from '../types';
+import type {
+  Airport,
+  Area,
+  AreaSeed,
+  Destination,
+  DestinationSeed,
+  Hotel,
+  HotelSeed,
+  OriginDestinationConnection,
+  Place,
+  PlaceSeed,
+} from '../types';
+import { getConnection } from './connections';
 import { getImages } from '../images';
 import { AREA_TAGLINES, deriveTagline } from './area-taglines';
 import { bali, baliAreas, baliHotels, baliPlaces } from './destinations/bali';
@@ -6,10 +18,12 @@ import { baliRestaurants } from './destinations/bali-restaurants';
 import { baliActivities } from './destinations/bali-activities';
 import {
   BALI_AREA_ZH,
+  BALI_DESTINATION_BESTFOR_ZH,
   BALI_DESTINATION_ZH,
   BALI_HOTEL_ZH,
   BALI_PLACE_ZH,
   DESTINATION_ZH,
+  STARTER_DESTINATION_BESTFOR_ZH,
   STARTER_DESTINATION_ZH,
 } from './zh/bali-zh';
 import { starterDestinations, starterHotels, starterPlaces } from './destinations/starter';
@@ -79,6 +93,11 @@ function decorateDestination(destination: DestinationSeed): Destination {
     countryZh: destination.countryZh ?? naming?.countryZh,
     taglineZh: destination.taglineZh ?? copy?.taglineZh,
     descriptionZh: destination.descriptionZh ?? copy?.descriptionZh,
+    bestForZh:
+      destination.bestForZh ??
+      (destination.id === 'bali'
+        ? BALI_DESTINATION_BESTFOR_ZH
+        : STARTER_DESTINATION_BESTFOR_ZH[destination.id]),
     areas: destination.areas.map(decorateArea),
   };
 }
@@ -233,26 +252,63 @@ export function getDestinationBundle(id: string): DestinationBundle | null {
   };
 }
 
-/** Non-stop availability from Singapore, used on the region map and cards. */
-export function hasDirectFromSingapore(destination: Destination): boolean {
-  return destination.airports.some((a) => a.directFromSingapore);
+/**
+ * Route facts for a destination AS SEEN FROM AN ORIGIN.
+ *
+ * These used to read `airport.directFromSingapore` and `airport.flightMinutes`,
+ * which made Singapore the only origin the product could describe. The data now
+ * comes from an `OriginDestinationConnection`, so the same destination answers
+ * differently depending on where the traveller is leaving from.
+ *
+ * `direct` is `boolean | null`, and `null` means we do not know — the caller
+ * must render 航班信息待确认 rather than assuming either answer.
+ */
+export function routeFor(
+  originCityId: string,
+  destinationId: string,
+): { connection: OriginDestinationConnection; destinationAirport?: Airport } {
+  return {
+    connection: getConnection(originCityId, destinationId),
+    destinationAirport: getPrimaryAirport(destinationId),
+  };
 }
 
-export function primaryRouteSummary(destination: Destination): {
-  airport?: Airport;
-  direct: boolean;
-  durationLabel: string;
-} {
-  const airport = getPrimaryAirport(destination.id);
-  if (!airport) return { direct: false, durationLabel: 'No airport in dataset' };
-  const direct = airport.directFromSingapore;
-  const durationLabel =
-    airport.flightMinutes != null
-      ? direct
-        ? `${formatMinutesRange(airport.flightMinutes.min, airport.flightMinutes.max)} non-stop`
-        : `${formatMinutesRange(airport.flightMinutes.min, airport.flightMinutes.max)} with a connection`
-      : 'Duration not in dataset';
-  return { airport, direct, durationLabel };
+/** Destinations reachable non-stop from this origin, among those we know about. */
+export function hasKnownDirect(originCityId: string, destinationId: string): boolean {
+  return getConnection(originCityId, destinationId).directAvailable === true;
+}
+
+/**
+ * The honest one-liner for a destination card.
+ *
+ * Returns structured parts rather than a formatted string, because "2h45m
+ * non-stop" and "航班信息待确认" are not the same kind of statement and the card
+ * needs to style them differently.
+ */
+export interface RouteSummary {
+  /** `null` when unknown. Never inferred. */
+  direct: boolean | null;
+  durationMinutes: { min: number; max: number } | null;
+  confidence: OriginDestinationConnection['confidence'];
+  weekendSuitability: OriginDestinationConnection['weekendSuitability'];
+  destinationAirports: string[];
+  originAirports: string[];
+  source: string;
+  verifiedAt: string;
+}
+
+export function routeSummary(originCityId: string, destinationId: string): RouteSummary {
+  const c = getConnection(originCityId, destinationId);
+  return {
+    direct: c.directAvailable,
+    durationMinutes: c.approximateFlightDuration,
+    confidence: c.confidence,
+    weekendSuitability: c.weekendSuitability,
+    destinationAirports: c.destinationAirports,
+    originAirports: c.originAirports,
+    source: c.source,
+    verifiedAt: c.verifiedAt,
+  };
 }
 
 export function formatMinutesRange(min: number, max: number): string {
@@ -264,5 +320,16 @@ export function formatMinutesRange(min: number, max: number): string {
   return `${fmt(min)}–${fmt(max)}`;
 }
 
-export { SINGAPORE_ORIGIN, SEA_MAP_VIEW, REGIONS, getRegion } from './regions';
+export { SEA_MAP_VIEW, REGIONS, getRegion } from './regions';
+export {
+  ORIGIN_CITIES,
+  ORIGIN_REGIONS,
+  DEFAULT_ORIGIN_CITY_ID,
+  getOriginCity,
+  getOriginCities,
+  getOriginCityByAirportCode,
+  airportCodesFor,
+  originMatchesQuery,
+} from './origins';
+export { getConnection, getConnectionsForOrigin, connectionCoverage } from './connections';
 export { HOTEL_BRANDS, HOTEL_GROUPS, getHotelBrand, inferPriceTier, getHotelGroup } from './hotel-brands';

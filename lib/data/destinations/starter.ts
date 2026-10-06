@@ -327,10 +327,17 @@ const phuQuoc: DestinationSeed = {
       city: "Phú Quốc (Phu Quoc Special Zone), An Giang province, Vietnam — formerly Kiên Giang province",
       coordinates: { lat: 10.17167, lng: 103.99111, confidence: "verified", coordNote: "English Wikipedia 'Phu Quoc International Airport' gives 10°10′18″N 103°59′28″E = 10.17167, 103.99111 (IATA PQC, ICAO VVPQ) —…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 95, max: 120 },
-      airlines: ["Scoot","VietJet Air","Sun PhuQuoc Airways"],
-      flightNote: "Direct SIN–PQC nonstop service exists and is confirmed by three independent sources. (1) Scoot launched Singapore–Phu Quoc on 9 Nov 2024 (Straits Times, 11 Nov 2024: 'Scoot launches direct flights to Padang, Phu Quoc and Shantou'); its flight TR524 is scheduled SIN 16:40 → PQC 17:40, a 120-minute scheduled block (Singapore UTC+8 vs Vietnam UTC+7) — https://www.avionio.com/en/flight/tr-524.",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 95, max: 120 },
+          airlines: ["Scoot","VietJet Air","Sun PhuQuoc Airways"],
+          note: "Direct SIN–PQC nonstop service exists and is confirmed by three independent sources. (1) Scoot launched Singapore–Phu Quoc on 9 Nov 2024 (Straits Times, 11 Nov 2024: 'Scoot launches direct flights to Padang, Phu Quoc and Shantou'); its flight TR524 is scheduled SIN 16:40 → PQC 17:40, a 120-minute scheduled block (Singapore UTC+8 vs Vietnam UTC+7) — https://www.avionio.com/en/flight/tr-524.",
+      },
     },
   ],
   areas: phuQuocAreas,
@@ -652,10 +659,17 @@ const daNangHoiAn: DestinationSeed = {
       city: "Da Nang (Hòa Cường, Hải Châu area), Vietnam",
       coordinates: { lat: 16.04389, lng: 108.19944, confidence: "verified", coordNote: "lat/lon 16.043888888889, 108.199444444444 from Wikidata entity Q773330 (P625), which is the structured-data record behind the English Wikipedia article 'Da Nang…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 165, max: 175 },
-      airlines: ["Singapore Airlines","Vietjet Air","Scoot"],
-      flightNote: "Direct (nonstop) SIN-DAD service is confirmed and currently operated by three carriers: Singapore Airlines, Vietjet Air and Scoot, giving about 24 nonstop flights per week between Singapore and Da Nang (Vietnam News Agency / VietnamPlus, 21 Oct 2025: 'The expansion of direct routes between Singapore and Da Nang, now served by Singapore Airlines, Vietjet Air and Scoot Airlines, has increased…",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 165, max: 175 },
+          airlines: ["Singapore Airlines","Vietjet Air","Scoot"],
+          note: "Direct (nonstop) SIN-DAD service is confirmed and currently operated by three carriers: Singapore Airlines, Vietjet Air and Scoot, giving about 24 nonstop flights per week between Singapore and Da Nang (Vietnam News Agency / VietnamPlus, 21 Oct 2025: 'The expansion of direct routes between Singapore and Da Nang, now served by Singapore Airlines, Vietjet Air and Scoot Airlines, has increased…",
+      },
     },
   ],
   areas: daNangHoiAnAreas,
@@ -980,10 +994,17 @@ const hoChiMinhCity: DestinationSeed = {
       city: "Ho Chi Minh City",
       coordinates: { lat: 10.81889, lng: 106.65194, confidence: "verified", coordNote: "English Wikipedia 'Tan Son Nhat International Airport' via the MediaWiki coordinates API (pageid 1217319):…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 125, max: 140 },
-      airlines: ["Scoot","Singapore Airlines","Vietnam Airlines","VietJet Air"],
-      flightNote: "Kvikr's SIN-SGN nonstop timetable for a sample day lists 12 nonstop departures operated by Scoot (TR502/TR516/TR552), Singapore Airlines (SQ178/SQ184/SQ186), Vietnam Airlines (VN650/VN654/VN656) and VietJet Air (VJ812/VJ814/VJ882), with an average duration of 2h11m (https://kvikr.com/non-stop-flights/from_sin_singapore/to_sgn_ho_chi_minh_city).",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 125, max: 140 },
+          airlines: ["Scoot","Singapore Airlines","Vietnam Airlines","VietJet Air"],
+          note: "Kvikr's SIN-SGN nonstop timetable for a sample day lists 12 nonstop departures operated by Scoot (TR502/TR516/TR552), Singapore Airlines (SQ178/SQ184/SQ186), Vietnam Airlines (VN650/VN654/VN656) and VietJet Air (VJ812/VJ814/VJ882), with an average duration of 2h11m (https://kvikr.com/non-stop-flights/from_sin_singapore/to_sgn_ho_chi_minh_city).",
+      },
     },
   ],
   areas: hoChiMinhCityAreas,
@@ -1309,10 +1330,17 @@ const hanoi: DestinationSeed = {
       city: "Hanoi (Nội Bài, Sóc Sơn district, ~35 km / 22 mi north-east of downtown)",
       coordinates: { lat: 21.21389, lng: 105.80306, confidence: "verified", coordNote: "Wikipedia 'Noi Bai International Airport' infobox coordinate 21°12′50″N 105°48′11″E = 21.21389, 105.80306 (Wikidata Q844098, IATA HAN / ICAO VVNB)." },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 195, max: 215 },
-      airlines: ["Singapore Airlines","Scoot","Vietnam Airlines","VietJet Air"],
-      flightNote: "SIN–HAN is served nonstop. The Wikipedia 'Noi Bai International Airport' airlines-and-destinations table lists Scoot, Singapore Airlines, VietJet Air and Vietnam Airlines all flying to Singapore; TripWise.vn lists the scheduled HAN–SIN time as 3h25m (205 min) over 2,218 km, so SIN–HAN block times realistically range ~3h15m–3h35m (195–215 min).",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 195, max: 215 },
+          airlines: ["Singapore Airlines","Scoot","Vietnam Airlines","VietJet Air"],
+          note: "SIN–HAN is served nonstop. The Wikipedia 'Noi Bai International Airport' airlines-and-destinations table lists Scoot, Singapore Airlines, VietJet Air and Vietnam Airlines all flying to Singapore; TripWise.vn lists the scheduled HAN–SIN time as 3h25m (205 min) over 2,218 km, so SIN–HAN block times realistically range ~3h15m–3h35m (195–215 min).",
+      },
     },
   ],
   areas: hanoiAreas,
@@ -1582,10 +1610,17 @@ const siemReap: DestinationSeed = {
       city: "Siem Reap (Soutr Nikom / Sotr Nikum district, ~50 km east of Siem Reap town)",
       coordinates: { lat: 13.37528, lng: 104.22083, confidence: "verified", coordNote: "13.37528 N, 104.22083 E from English Wikipedia, 'Siem Reap–Angkor International Airport' (geohack params 13_22_31_N_104_13_15_E):…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 130, max: 150 },
-      airlines: ["Singapore Airlines"],
-      flightNote: "Nonstop SIN-SAI exists as of Oct 2026 and is flown by Singapore Airlines only: SQ164 departs Singapore Changi T2 08:25 and lands SAI 09:40 = scheduled block time 2h15m (135 min), Boeing 737 MAX 8, and it operated daily across the 15 Sep - 6 Oct 2026 window checked on Avionio (https://www.avionio.com/en/flight/sq-164); the return is SQ165.",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 130, max: 150 },
+          airlines: ["Singapore Airlines"],
+          note: "Nonstop SIN-SAI exists as of Oct 2026 and is flown by Singapore Airlines only: SQ164 departs Singapore Changi T2 08:25 and lands SAI 09:40 = scheduled block time 2h15m (135 min), Boeing 737 MAX 8, and it operated daily across the 15 Sep - 6 Oct 2026 window checked on Avionio (https://www.avionio.com/en/flight/sq-164); the return is SQ165.",
+      },
     },
   ],
   areas: siemReapAreas,
@@ -1831,10 +1866,17 @@ const phnomPenh: DestinationSeed = {
       city: "Phnom Penh (Kandal Stueng District, Kandal Province, ~19-30 km south of the city centre)",
       coordinates: { lat: 11.36016, lng: 104.93127, confidence: "verified", coordNote: "Coordinate is the OSM passenger terminal: way 1172638379 'Arrival and Departure Terminal' (aeroway=terminal, operator Vinci Airports)…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 120, max: 135 },
-      airlines: ["Singapore Airlines","Emirates"],
-      flightNote: "2025 AIRPORT SWITCH: Phnom Penh's airport code changed from PNH to KTI when Techo International Airport opened on 9 September 2025; Korean Air's notice is titled 'Notice of Airport Code Change (PNH to KTI, Effective 9 September 2025)' (https://en.wikipedia.org/wiki/Techo_International_Airport, https://www.ttrweekly.com/site/2025/09/sq-shifts-phnom-penh-flights-to-techo/).",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 120, max: 135 },
+          airlines: ["Singapore Airlines","Emirates"],
+          note: "2025 AIRPORT SWITCH: Phnom Penh's airport code changed from PNH to KTI when Techo International Airport opened on 9 September 2025; Korean Air's notice is titled 'Notice of Airport Code Change (PNH to KTI, Effective 9 September 2025)' (https://en.wikipedia.org/wiki/Techo_International_Airport, https://www.ttrweekly.com/site/2025/09/sq-shifts-phnom-penh-flights-to-techo/).",
+      },
     },
   ],
   areas: phnomPenhAreas,
@@ -2113,10 +2155,17 @@ const cebu: DestinationSeed = {
       city: "Lapu-Lapu City (Mactan Island), Cebu, Philippines",
       coordinates: { lat: 10.30722, lng: 123.97889, confidence: "verified", coordNote: "Wikipedia / GeoHack coordinate 10°18′26″N 123°58′44″E = 10.30722, 123.97889 (IATA CEB, ICAO RPVM) —…" },
       role: "primary",
-      directFromSingapore: true,
-      flightMinutes: { min: 220, max: 230 },
-      airlines: ["Scoot (TR)","Singapore Airlines (SQ)","Cebu Pacific (5J)"],
-      flightNote: "Nonstop SIN–CEB is operated by Scoot, Singapore Airlines and Cebu Pacific. Measured block times: Scoot TR380 = 3h40m (220 min, 20:55→00:15, Embraer E190-E2) — https://www.hopegoo.com/en-us/hot-flights/flight-number/tr380/ ; Singapore Airlines SQ900 = 3h45m (225 min, 11:36→14:54, Boeing 737 MAX 8) — https://www.hopegoo.com/en-us/hot-flights/flight-number/sq900/ ;",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: true,
+          flightMinutes: { min: 220, max: 230 },
+          airlines: ["Scoot (TR)","Singapore Airlines (SQ)","Cebu Pacific (5J)"],
+          note: "Nonstop SIN–CEB is operated by Scoot, Singapore Airlines and Cebu Pacific. Measured block times: Scoot TR380 = 3h40m (220 min, 20:55→00:15, Embraer E190-E2) — https://www.hopegoo.com/en-us/hot-flights/flight-number/tr380/ ; Singapore Airlines SQ900 = 3h45m (225 min, 11:36→14:54, Boeing 737 MAX 8) — https://www.hopegoo.com/en-us/hot-flights/flight-number/sq900/ ;",
+      },
     },
   ],
   areas: cebuAreas,
@@ -2344,10 +2393,17 @@ const boracay: DestinationSeed = {
       city: "Caticlan, Malay, Aklan, Philippines",
       coordinates: { lat: 11.92472, lng: 121.955, confidence: "verified", coordNote: "Coordinates 11°55'29\"N 121°57'18\"E (11.92472, 121.95500) taken from the Wikipedia infobox for Godofredo P." },
       role: "primary",
-      directFromSingapore: false,
-      flightMinutes: { min: 265, max: 320 },
-      airlines: ["Singapore Airlines (SIN-MNL)","Scoot (SIN-MNL)","Cebu Pacific (SIN-MNL, MNL-MPH, CEB-MPH)","Philippine Airlines (SIN-MNL)","PAL Express (MNL-MPH, CEB-MPH)","Philippines AirAsia (MNL-MPH)","Cebgo (regional turboprop services from Cebu/El Nido)"],
-      flightNote: "There is NO direct SIN-MPH (Singapore-Caticlan) service and no direct SIN-KLO either; every itinerary connects at least once. Times given above are total AIRBORNE minutes for the two flight legs, excluding layover. Fastest realistic routing: SIN-MNL ~3h20m-3h50m (200-230 min; Singapore Airlines, Scoot, Cebu Pacific, Philippine Airlines) + MNL-MPH ~1h05m-1h20m (65-80 min;",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: false,
+          flightMinutes: { min: 265, max: 320 },
+          airlines: ["Singapore Airlines (SIN-MNL)","Scoot (SIN-MNL)","Cebu Pacific (SIN-MNL, MNL-MPH, CEB-MPH)","Philippine Airlines (SIN-MNL)","PAL Express (MNL-MPH, CEB-MPH)","Philippines AirAsia (MNL-MPH)","Cebgo (regional turboprop services from Cebu/El Nido)"],
+          note: "There is NO direct SIN-MPH (Singapore-Caticlan) service and no direct SIN-KLO either; every itinerary connects at least once. Times given above are total AIRBORNE minutes for the two flight legs, excluding layover. Fastest realistic routing: SIN-MNL ~3h20m-3h50m (200-230 min; Singapore Airlines, Scoot, Cebu Pacific, Philippine Airlines) + MNL-MPH ~1h05m-1h20m (65-80 min;",
+      },
     },
     {
       id: "klo-kalibo",
@@ -2356,10 +2412,17 @@ const boracay: DestinationSeed = {
       city: "Kalibo, Aklan, Philippines",
       coordinates: { lat: 11.67917, lng: 122.37583, confidence: "verified", coordNote: "Coordinates 11°40'45\"N 122°22'33\"E (11.67917, 122.37583) taken from the Wikipedia infobox for Kalibo International Airport, IATA KLO / ICAO RPVK:…" },
       role: "secondary",
-      directFromSingapore: false,
-      flightMinutes: { min: 265, max: 310 },
-      airlines: ["Singapore Airlines (SIN-MNL)","Scoot (SIN-MNL)","Cebu Pacific (SIN-MNL, MNL-KLO)","Philippine Airlines (SIN-MNL, MNL-KLO)","Philippines AirAsia (MNL-KLO)"],
-      flightNote: "No direct Singapore-Kalibo service. Kalibo is almost always reached via Manila: SIN-MNL ~3h20m-3h50m (200-230 min) + MNL-KLO ~1h05m-1h20m (65-80 min) = 265-310 min airborne, plus a 90-240 min connection. Kalibo's other international traffic is seasonal and irrelevant to a Singapore routing (Philippine Airlines and Trinity Airways seasonal Seoul-Incheon; IrAero seasonal Irkutsk via Hefei).",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: false,
+          flightMinutes: { min: 265, max: 310 },
+          airlines: ["Singapore Airlines (SIN-MNL)","Scoot (SIN-MNL)","Cebu Pacific (SIN-MNL, MNL-KLO)","Philippine Airlines (SIN-MNL, MNL-KLO)","Philippines AirAsia (MNL-KLO)"],
+          note: "No direct Singapore-Kalibo service. Kalibo is almost always reached via Manila: SIN-MNL ~3h20m-3h50m (200-230 min) + MNL-KLO ~1h05m-1h20m (65-80 min) = 265-310 min airborne, plus a 90-240 min connection. Kalibo's other international traffic is seasonal and irrelevant to a Singapore routing (Philippine Airlines and Trinity Airways seasonal Seoul-Incheon; IrAero seasonal Irkutsk via Hefei).",
+      },
     },
   ],
   areas: boracayAreas,
@@ -2616,10 +2679,17 @@ const palawan: DestinationSeed = {
       city: "Puerto Princesa",
       coordinates: { lat: 9.74194, lng: 118.75889, confidence: "verified", coordNote: "Coordinates 09°44'31\"N 118°45'32\"E (9.74194, 118.75889) taken from the airport's Wikipedia infobox and its Wikidata item Q1432514 (P625 = 9.742222222, 118.758611111)." },
       role: "primary",
-      directFromSingapore: false,
-      flightMinutes: { min: 335, max: 400 },
-      airlines: ["Singapore Airlines","Philippine Airlines","Cebu Pacific","Scoot","Jetstar Asia","AirAsia Philippines","Cebgo"],
-      flightNote: "No non-stop SIN-PPS service exists; every itinerary is one-stop. Typical routing: Singapore Changi (SIN) - Manila Ninoy Aquino (MNL), about 215-240 min block time, then Manila - Puerto Princesa, about 75-95 min. When layover is excluded the airborne total is roughly 290-335 min;",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: false,
+          flightMinutes: { min: 335, max: 400 },
+          airlines: ["Singapore Airlines","Philippine Airlines","Cebu Pacific","Scoot","Jetstar Asia","AirAsia Philippines","Cebgo"],
+          note: "No non-stop SIN-PPS service exists; every itinerary is one-stop. Typical routing: Singapore Changi (SIN) - Manila Ninoy Aquino (MNL), about 215-240 min block time, then Manila - Puerto Princesa, about 75-95 min. When layover is excluded the airborne total is roughly 290-335 min;",
+      },
     },
     {
       id: "lio-el-nido-airport",
@@ -2628,10 +2698,17 @@ const palawan: DestinationSeed = {
       city: "El Nido",
       coordinates: { lat: 11.20194, lng: 119.41694, confidence: "verified", coordNote: "Coordinates 11°12'07\"N 119°25'01\"E (11.20194, 119.41694) from the Wikipedia infobox and Wikidata item Q5351691 (P625 = 11.2025, 119.416111111)." },
       role: "secondary",
-      directFromSingapore: false,
-      flightMinutes: { min: 425, max: 560 },
-      airlines: ["Cebgo","AirSWIFT","Cebu Pacific"],
-      flightNote: "No non-stop SIN-El Nido (ENI/LIO) service. Because the airstrip is only 1,000 m, it is served solely by turboprops (Cebgo ATR 72-600/ATR 42-600, and formerly AirSWIFT). Typical routing: SIN-MNL (about 215-240 min), then a land transfer from NAIA to Clark International Airport (about 90 km, roughly 120-180 min by road), then Clark (CRK) - El Nido, about 90 min.",
+      /*
+       * Authored against a single origin. Harvested into an OriginDestinationConnection
+       * by lib/data/connections.ts and read by nothing else.
+       */
+      legacyRouteFromOrigin: {
+        originCityId: 'singapore',
+        direct: false,
+          flightMinutes: { min: 425, max: 560 },
+          airlines: ["Cebgo","AirSWIFT","Cebu Pacific"],
+          note: "No non-stop SIN-El Nido (ENI/LIO) service. Because the airstrip is only 1,000 m, it is served solely by turboprops (Cebgo ATR 72-600/ATR 42-600, and formerly AirSWIFT). Typical routing: SIN-MNL (about 215-240 min), then a land transfer from NAIA to Clark International Airport (about 90 km, roughly 120-180 min by road), then Clark (CRK) - El Nido, about 90 min.",
+      },
     },
   ],
   areas: palawanAreas,

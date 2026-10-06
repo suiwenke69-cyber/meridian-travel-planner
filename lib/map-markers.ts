@@ -155,7 +155,13 @@ export function buildMapMarkers(input: MarkerBuildInput): BuiltMarkers {
       lng: airport.coordinates.lng,
       layer: 'airport',
       label: `${airport.code} · ${airport.name}`,
-      sublabel: `${airport.city} · ${airport.directFromSingapore ? 'non-stop from SIN' : 'connection required'}`,
+      /*
+       * No origin-relative claim here any more. A marker's sublabel used to say
+       * "non-stop from SIN" regardless of where the traveller was leaving from.
+       * The connection layer owns that judgement now, and the destination
+       * planner shows it on the airport's card.
+       */
+      sublabel: airport.city,
       order: inActiveDay?.order,
       selected: selectedEntityId === airport.id,
       dimmed: !inActiveDay && otherDayRefs.has(airport.id),

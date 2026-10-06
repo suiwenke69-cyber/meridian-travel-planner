@@ -2,7 +2,7 @@
 
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SINGAPORE_ORIGIN } from '@/lib/data/regions';
+
 import { useMapEffect } from './MapCanvas';
 
 export interface ArcTarget {
@@ -15,26 +15,32 @@ const SOURCE_ID = 'region-arc';
 const LAYERS = ['region-arc-halo', 'region-arc-line'];
 
 /**
- * The single Singapore → selected destination arc.
+ * The single origin → selected destination arc.
  *
  * Deliberately shows ONE connection. Drawing an arc to every destination turned
  * the region view into a spider's web and diluted the one relationship this
  * product is built on. The arc is drawn progressively on selection, and it is a
  * decorative route *indicator* — never presented as an airway.
+ *
+ * The origin is a parameter rather than a constant: this used to start at
+ * Singapore unconditionally, which stopped being true the moment the product
+ * supported leaving from anywhere else.
  */
-export function RegionArcLayer({ target }: { target: ArcTarget | null }) {
+export function RegionArcLayer({
+  origin,
+  target,
+}: {
+  origin: { lat: number; lng: number };
+  target: ArcTarget | null;
+}) {
   const [map, setMap] = useState<MapLibreMap | null>(null);
   const [sourceEpoch, setSourceEpoch] = useState(0);
   const rafRef = useRef<number | null>(null);
 
   const curve = useMemo(() => {
     if (!target) return null;
-    return curvedArc(
-      { lat: SINGAPORE_ORIGIN.coordinates.lat, lng: SINGAPORE_ORIGIN.coordinates.lng },
-      { lat: target.lat, lng: target.lng },
-      96,
-    );
-  }, [target]);
+    return curvedArc({ lat: origin.lat, lng: origin.lng }, { lat: target.lat, lng: target.lng }, 96);
+  }, [origin.lat, origin.lng, target]);
 
   useMapEffect(
     (instance) => {

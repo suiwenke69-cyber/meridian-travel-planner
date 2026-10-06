@@ -45,6 +45,7 @@ export function createTrip(draft: TripDraft, destination: Destination): Trip {
   return {
     id,
     name: draft.name?.trim() || buildTripName(destination, arrival),
+    originCityId: draft.originCityId,
     destinationId: destination.id,
     arrivalDate: arrival,
     departureDate: departure,
