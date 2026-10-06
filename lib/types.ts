@@ -969,17 +969,20 @@ export interface OriginDestinationConnection {
 // separation exists to prevent. Nothing here reaches a traveller until a
 // researcher moves it through review.
 
-export type SocialPlatform =
-  | 'xiaohongshu'
-  | 'douyin'
-  | 'tiktok'
-  | 'instagram'
-  | 'youtube'
-  | 'bilibili'
-  | 'blog'
-  /** Text the researcher typed or pasted from a source we cannot legally fetch. */
-  | 'manual'
-  | 'other';
+/**
+ * V1 supports exactly one source.
+ *
+ * This was a nine-value union of every platform a travel guide might live on.
+ * That breadth made the product worse, not better: extraction, retrieval,
+ * layout and copy all had to hedge for sources nobody had tested, and the
+ * Xiaohongshu workflow — where most of this product's actual users are — stayed
+ * a paste box.
+ *
+ * A one-value union looks odd and is deliberate. Adding a second platform should
+ * be a change to this line, a provider, and a copy pass, rather than something
+ * that happens by accident because a union already permitted it (§1, §35).
+ */
+export type SocialPlatform = 'xiaohongshu';
 
 /**
  * Where an import's content came from.
@@ -1007,14 +1010,14 @@ export type SocialImportStatus =
   | 'failed';
 
 /**
- * One imported guide.
+ * One imported Xiaohongshu guide.
  *
- * Was `SocialGuideSource`, authored for an internal researcher. It is now the
- * traveller's own object: they paste a link or a piece of text, and this record
- * owns the result. The research view reads the same type — a guide is a guide,
- * whoever imported it, and the difference is `visibility`, not shape.
+ * Was `SocialGuideSource`, authored for an internal researcher, then a generic
+ * "social import". It is now specifically a Xiaohongshu post — link, body text
+ * and images — because that is the only source V1 reads and the only one whose
+ * workflow is designed.
  */
-export interface SocialImport {
+export interface XiaohongshuImport {
   id: string;
   /**
    * Who this belongs to.
@@ -1058,6 +1061,28 @@ export interface SocialImport {
   contentHash?: string;
 
   userNotes?: string;
+
+  // --- images (§3, §4) ----------------------------------------------------
+  /**
+   * Ids of the `ImportImage` records that came with this post.
+   *
+   * Ids rather than embedded records: an import can hold twenty images and the
+   * review screen re-renders constantly. Images are read from the image store,
+   * and deleting the import deletes them.
+   */
+  imageIds: string[];
+  /** Which images were read out of the post itself rather than uploaded. */
+  retrievedImageCount?: number;
+  /**
+   * What produced the text, when something did.
+   *
+   * `null`/absent means the traveller pasted it — which stays the normal case on
+   * a deployment with no server, and is stated in the UI rather than hidden.
+   */
+  retrievalProvider?: string;
+  /** Human-readable note about a partial retrieval, e.g. text yes, images no. */
+  retrievalNote?: string;
+
   /**
    * Text the traveller supplied.
    *
@@ -1072,6 +1097,228 @@ export interface SocialImport {
   /** Short, non-copyrightable reason the import failed, when it did. */
   failureReason?: string;
 }
+
+/**
+ * Who a stored image belongs to, and therefore where it may be shown.
+ *
+ * THE BOUNDARY THIS TYPE EXISTS TO HOLD (§20)
+ *
+ * Meridian's canonical photography is licensed, attributed, and provably of the
+ * subject it illustrates. An image lifted from somebody's Xiaohongshu post is
+ * none of those things: it is a creator's work, it may show a place only
+ * incidentally, and it was never offered to us.
+ *
+ * So an imported image is `private_import` by DEFAULT and there is no code path
+ * that promotes it to canonical photography. `user_contributed` exists for a
+ * different, future thing entirely — a traveller offering their OWN photograph
+ * with explicit consent (§21) — and is deliberately not reachable from any
+ * import flow. The two must never be confused.
+ */
+export type ImageVisibility = 'private_import' | 'user_contributed';
+
+/** Whether anything has been read out of an image yet. */
+export type ImageAnalysisStatus =
+  /** Queued or waiting: images are analysed in a batch after upload. */
+  | 'pending'
+  /** A provider read the image and returned findings. */
+  | 'analyzed'
+  /** No vision provider is available in this deployment. Honest, not an error. */
+  | 'unsupported'
+  /** The provider was available and failed. */
+  | 'failed';
+
+/**
+ * One image that arrived with an import.
+ *
+ * Never the bytes: this record is the catalogue entry, and the blob lives in
+ * IndexedDB behind `storageReference` (§30). Keeping them apart means the
+ * review screen can list fifty images without decoding fifty full-size bitmaps,
+ * and it means the image store can be evicted or re-backed without touching the
+ * import.
+ */
+export interface ImportImage {
+  id: string;
+  importId: string;
+  ownerProfileId: string;
+
+  /** Key into the local image store. Opaque on purpose. */
+  storageReference: string;
+  /** Key for the downscaled preview actually rendered in lists. */
+  thumbnailReference: string;
+
+  /** What the image is, when the traveller said. Never guessed. */
+  caption?: string;
+
+  /** `xiaohongshu` when fetched, `user_upload` when the traveller supplied it. */
+  originalSource: 'xiaohongshu' | 'user_upload';
+  /** Position in the post, so "图片 3" means what the traveller saw. */
+  originalIndex: number;
+
+  width?: number;
+  height?: number;
+  /** Bytes after downscaling. Drives the storage budget, not the quota. */
+  bytes?: number;
+  /** SHA-256 of the stored bytes. Identical uploads are stored once (§30). */
+  contentHash?: string;
+
+  analysisStatus: ImageAnalysisStatus;
+  visibility: ImageVisibility;
+
+  createdAt: string;
+}
+
+/**
+ * What a vision provider read out of one image.
+ *
+ * An INTERMEDIATE INFERENCE RECORD, not a fact about the world (§32). It is
+ * kept so a reviewer can see why a candidate exists, and so a later analysis run
+ * with a better model can be compared against what the old one claimed. Nothing
+ * here ever reaches a traveller as an assertion about a place.
+ */
+export interface ImageAnalysis {
+  id: string;
+  imageId: string;
+  importId: string;
+
+  /** Literal text visible in the image. The most defensible output. */
+  detectedTexts: string[];
+  candidatePlaceNames: string[];
+  candidateCategories: RecommendationType[];
+  /** What the scene appears to be: a beach, a menu board, a hotel lobby. */
+  sceneHints: string[];
+  areaHints: string[];
+
+  /**
+   * How sure the provider was, 0–1, per candidate name.
+   *
+   * Never rendered. It decides whether a candidate is offered as a proposal or
+   * as a question (§26).
+   */
+  nameConfidences?: Record<string, number>;
+
+  analysisProvider: string;
+  analysisVersion: string;
+  createdAt: string;
+}
+
+/**
+ * A place candidate. Renamed from `SocialPlaceMention` because "mention" was
+ * the wrong noun: this is a place the import believes it found, and it may have
+ * been found in a picture rather than in a sentence (§9).
+ */
+export interface PlaceCandidate {
+  id: string;
+  importId: string;
+
+  /** Exactly as the guide wrote it — text or image — before any normalisation. */
+  rawName: string;
+  normalizedName: string;
+  /** The wider phrase it was found in. Short, and never the whole post. */
+  contextText?: string;
+
+  /** What kind of place this is. Internal English enum; the UI is Chinese. */
+  entityType?: RecommendationType;
+
+  // --- provenance: WHY this candidate exists (§9) -------------------------
+  /** The post's own words named it. */
+  detectedFromText: boolean;
+  /** Which images it was read out of. Empty when it came from text alone. */
+  detectedFromImageIds: string[];
+  /**
+   * Images the traveller attached by hand, or confirmed from a suggestion.
+   *
+   * Kept separate from `detectedFromImageIds` so a later analysis run cannot
+   * overwrite a human decision (§33).
+   */
+  assignedImageIds: string[];
+  /** One short line on why we believed this was a place. */
+  detectedReason?: string;
+
+  /** Dishes, activities or specifics the guide named. */
+  extractedItems: string[];
+  /** Source-derived insight. NOT a verified attribute of the place. */
+  contextThemes: string[];
+  positiveThemes: string[];
+  warnings: string[];
+  bestTimeMentioned?: string;
+
+  areaHint?: string;
+  destinationHint?: string;
+
+  // --- resolution (§10) ---------------------------------------------------
+  resolutionStatus: PlaceResolutionStatus;
+  /** The Meridian place this resolved to, when it did. */
+  matchedPlaceId?: string;
+  matchMethod?: 'exact' | 'alias' | 'fuzzy' | 'manual' | 'external' | 'created';
+  /** 0–1, for auditing. The UI speaks in bands and status words. */
+  matchConfidence?: number;
+  matchBand: MatchBand;
+  /**
+   * Candidates an external provider returned, when Meridian held nothing.
+   *
+   * They are OFFERED, never auto-accepted: an external hit means we found a
+   * plausible place on a map, not that the guide meant it (§10, §11).
+   */
+  externalCandidates?: ExternalPlaceCandidate[];
+  /** Set when the traveller resolved this to a place they pinned or created. */
+  submittedPlaceId?: string;
+
+  verificationStatus: MentionStatus;
+  userDecision: UserDecision;
+
+  createdAt: string;
+}
+
+/** Kept as an alias so the internal research view keeps compiling. */
+export type SocialPlaceMention = PlaceCandidate;
+export type SocialMention = PlaceCandidate;
+
+/**
+ * A place an external search provider knows about.
+ *
+ * Deliberately a small, flat record: §12 makes cost a first-class concern, so
+ * the shape only carries the fields the resolution step actually uses. There is
+ * no room in here for opening hours, ratings or photography, which is how a
+ * cheap field-masked request stays cheap.
+ */
+export interface ExternalPlaceCandidate {
+  providerId: 'google_places';
+  /** The provider's own id, cached so the same place is never looked up twice. */
+  providerPlaceId: string;
+  name: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  /** The provider's category, verbatim, for the reviewer to interpret. */
+  category?: string;
+}
+
+/**
+ * Where a candidate's map position came from.
+ *
+ * The order is the pipeline (§10) and the value is rendered in the UI, because
+ * "we know this place" and "a map search found something similar" are different
+ * claims and a traveller deciding what to save deserves to see which one they
+ * are getting.
+ */
+export type PlaceResolutionStatus =
+  /** Matched against Meridian's own canonical dataset. */
+  | 'meridian'
+  /** Resolved through a name this profile already confirmed. */
+  | 'alias'
+  /** One plausible hit from an external provider. Needs the traveller's yes. */
+  | 'external'
+  /** Several external hits. The traveller picks, or none. */
+  | 'external_multiple'
+  /** Nothing anywhere. A manual pin is the only honest answer. */
+  | 'unresolved'
+  /** The traveller pointed at the map. */
+  | 'user_pinned'
+  /** The traveller created it. */
+  | 'user_created';
+
+/** The generic name, kept so older call sites and the research view compile. */
+export type SocialImport = XiaohongshuImport;
 
 /**
  * What we currently believe about a mention's relationship to a place.
@@ -1104,6 +1351,8 @@ export type RecommendationType =
   | 'shopping'
   | 'wellness'
   | 'area'
+  /** Airports, harbours and ferry terminals a guide names as meeting points. */
+  | 'transport'
   | 'unknown';
 
 export type MentionSentiment = 'positive' | 'neutral' | 'mixed' | 'negative';
@@ -1120,49 +1369,6 @@ export type UserDecision = 'save' | 'ignore' | 'pending';
  */
 export type MatchBand = 'high' | 'medium' | 'low';
 
-export interface SocialPlaceMention {
-  id: string;
-  importId: string;
-  /** Exactly as it appeared in the guide, before any normalisation. */
-  rawPlaceName: string;
-  /** The wider phrase it was found in — short, and never the whole post. */
-  rawText?: string;
-  /** Cleaned for matching: lowercased, punctuation and suffixes stripped. */
-  normalizedPlaceName: string;
-
-  /** What kind of place the surrounding text implies, when it implies one. */
-  categoryHint?: RecommendationType;
-  areaHint?: string;
-  /** Why the extractor believed this was a place, in one short line. */
-  extractedReason?: string;
-  /** Dishes, activities or specifics the guide named. */
-  extractedItems: string[];
-
-  /** Source-derived insight. NOT a verified attribute of the place. */
-  contextThemes: string[];
-  positiveThemes: string[];
-  warnings: string[];
-  bestTimeMentioned?: string;
-
-  /** The canonical Meridian place this was matched to, if any. */
-  matchedPlaceId?: string;
-  /** How the match was decided, so a reviewer can audit it. */
-  matchMethod?: 'exact' | 'alias' | 'fuzzy' | 'manual';
-  /** 0–1. Below the confidence floor the mention is marked 需要确认. */
-  matchConfidence?: number;
-  matchBand: MatchBand;
-
-  verificationStatus: MentionStatus;
-  userDecision: UserDecision;
-
-  /** Set when the traveller resolved this to a place they created. */
-  submittedPlaceId?: string;
-
-  createdAt: string;
-}
-
-/** Kept as the old name for the research view, which reads the same shape. */
-export type SocialMention = SocialPlaceMention;
 
 /**
  * A canonical place the traveller has kept.
@@ -1179,9 +1385,34 @@ export interface UserSavedPlace {
   destinationId: string;
   /** Which import it came from, when it came from one. */
   sourceImportId?: string;
+  /**
+   * The images the traveller chose to carry with this saved place (§22).
+   *
+   * References into their own import, never copies, and never promoted to the
+   * public gallery. This is what makes "the two photos I liked from that post"
+   * survive into the trip without Meridian republishing anybody's work.
+   */
+  selectedImportImageIds?: string[];
   savedAt: string;
   /** The traveller's own note. Private to them. */
   note?: string;
+}
+
+/**
+ * An image attached to a place, and who decided that.
+ *
+ * A separate record rather than a field on the candidate, because §33 asks for
+ * something specific: a human correction must outlive a later analysis run. The
+ * `source` field is what makes that possible — `user` rows are never rewritten
+ * by the machine, and a re-analysis only ever replaces `suggested` rows.
+ */
+export interface ImagePlaceAssignment {
+  id: string;
+  importId: string;
+  imageId: string;
+  candidateId: string;
+  source: 'suggested' | 'user';
+  createdAt: string;
 }
 
 export type SubmissionStatus = 'pending_verification' | 'accepted' | 'rejected';

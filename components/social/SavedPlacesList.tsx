@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Hotel, Place } from '@/lib/types';
+import type { Hotel, ImportImage, Place } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useT, useLocale } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
@@ -9,6 +9,7 @@ import { useUiStore } from '@/lib/store/ui-store';
 import { useTripStore } from '@/lib/store/trip-store';
 import { isRefInTrip, itemFromCustom } from '@/lib/trip';
 import { useResearchStore } from '@/lib/research/store';
+import { ImageStrip } from './ImageStrip';
 import {
   matchesSavedFilter,
   SAVED_FILTERS,
@@ -16,7 +17,7 @@ import {
   type SavedEntry,
   type SavedFilter,
 } from '@/lib/research/saved';
-import { categoryKey } from './ImportMentionCard';
+import { categoryKey } from '@/lib/research/labels';
 import { EmptyState } from '../ui/primitives';
 import { IconAlert, IconCheck, IconMapPin, IconPlus, IconTrash } from '../ui/icons';
 import { PlaceCard } from '../destination/cards/PlaceCard';
@@ -192,18 +193,47 @@ function Provenance({ entry }: { entry: Extract<SavedEntry, { kind: 'place' | 'h
   const provenance = useSavedProvenance();
   const mine = provenance.get(entry.id)?.mine ?? entry.saves.length;
   const community = provenance.get(entry.id)?.community ?? 0;
+
+  /*
+   * The traveller's own imported pictures, kept SEPARATE from the place's
+   * canonical photography (§23).
+   *
+   * Placing them side by side under one heading would blur the only distinction
+   * this feature has to keep clear: the photograph above is licensed and
+   * attributed, the pictures below are a creator's work that this traveller
+   * happens to have in their own guide. Two headings, two meanings.
+   */
+  const imageIds = useMemo(
+    () => [...new Set(entry.saves.flatMap((save) => save.selectedImportImageIds ?? []))],
+    [entry.saves],
+  );
+  const allImages = useResearchStore((state) => state.images);
+  const images = useMemo(
+    () => imageIds.map((id) => allImages.find((image) => image.id === id)).filter((image): image is ImportImage => Boolean(image)),
+    [imageIds, allImages],
+  );
+
   return (
-    <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
-      <span className="inline-flex items-center gap-1 rounded-full border border-accent/25 bg-accent-soft px-1.5 py-[1px] text-[10.5px] font-medium text-accent">
-        <IconSparkleMark />
-        {t('saved.fromImport')}
-      </span>
-      {mine > 0 && (
-        <span className="text-[10.5px] text-faint" data-testid={`saved-signal-mine-${entry.id}`}>
-          {t('saved.signalMineShort', { count: mine })}
+    <div className="mb-1.5 px-0.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 rounded-full border border-accent/25 bg-accent-soft px-1.5 py-[1px] text-[10.5px] font-medium text-accent">
+          <IconSparkleMark />
+          {t('saved.fromImport')}
         </span>
+        {mine > 0 && (
+          <span className="text-[10.5px] text-faint" data-testid={`saved-signal-mine-${entry.id}`}>
+            {t('saved.signalMineShort', { count: mine })}
+          </span>
+        )}
+        {community > 0 && <span className="text-[10.5px] text-faint">{t('saved.signalCommunity', { count: community })}</span>}
+      </div>
+
+      {images.length > 0 && (
+        <div className="mt-1.5" data-testid={`saved-images-${entry.id}`}>
+          <p className="mb-1 text-[10.5px] text-faint">{t('saved.fromYourGuide')}</p>
+          <ImageStrip images={images} size="sm" />
+        </div>
       )}
-      {community > 0 && <span className="text-[10.5px] text-faint">{t('saved.signalCommunity', { count: community })}</span>}
     </div>
   );
 }

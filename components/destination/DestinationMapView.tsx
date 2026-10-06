@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import type { Hotel, Place, SocialPlaceMention, UserSavedPlace } from '@/lib/types';
+import type { Hotel, Place, PlaceCandidate, UserSavedPlace } from '@/lib/types';
 import type { DoCategory } from '@/lib/store/ui-store';
 import { getDestinationBundle, isLocatable } from '@/lib/data';
 import { countMarkersByLayer, buildMapMarkers } from '@/lib/map-markers';
@@ -18,6 +18,7 @@ import RouteLayer from '../map/RouteLayer';
 import AreaLayer from '../map/AreaLayer';
 import MapFocusController from '../map/MapFocusController';
 import { useIsDesktop } from '@/lib/hooks';
+import { useT } from '@/lib/i18n/use-t';
 
 /**
  * The destination map — the dominant surface of every tab.
@@ -40,6 +41,7 @@ export default function DestinationMapView({
 }) {
   const bundle = getDestinationBundle(destinationId);
   const isDesktop = useIsDesktop();
+  const t = useT();
 
   const tab = useUiStore((s) => s.panelTab);
   const locale = useUiStore((s) => s.locale);
@@ -65,9 +67,10 @@ export default function DestinationMapView({
   const previewImportId = useImportUiStore((s) => s.previewImportId);
   const placeScope = useImportUiStore((s) => s.placeScope);
   const picking = useImportUiStore((s) => s.picking);
+  const pickedLocation = useImportUiStore((s) => s.pickedLocation);
   const setPickedLocation = useImportUiStore((s) => s.setPickedLocation);
   const savedPlaces = useResearchStore((s) => s.savedPlaces);
-  const mentions = useResearchStore((s) => s.mentions);
+  const candidates = useResearchStore((s) => s.candidates);
   const selectEntity = useUiStore((s) => s.selectEntity);
   const selectArea = useUiStore((s) => s.selectArea);
   const selectItem = useUiStore((s) => s.selectItem);
@@ -111,14 +114,14 @@ export default function DestinationMapView({
     if (!previewImportId || !bundle) return null;
     return doScope(bundle.places, bundle.hotels, {
       previewImportId,
-      mentions,
+      candidates,
       placeScope,
       savedPlaces,
       focusedAreaId: null,
       doCategory,
       destinationId,
     });
-  }, [previewImportId, bundle, mentions, placeScope, savedPlaces, doCategory, destinationId]);
+  }, [previewImportId, bundle, candidates, placeScope, savedPlaces, doCategory, destinationId]);
 
   const markers = useMemo(() => {
     if (!bundle) return [];
@@ -127,7 +130,7 @@ export default function DestinationMapView({
       const layers = emptyLayers();
       for (const place of importPreview.places) layers[place.markerLayer] = true;
       for (const hotel of importPreview.hotels) layers[hotel.hotelGroup] = true;
-      return buildMapMarkers({
+      const built = buildMapMarkers({
         hotels: importPreview.hotels,
         places: importPreview.places,
         airports: [],
@@ -140,6 +143,25 @@ export default function DestinationMapView({
         hoveredItemId: hoveredEntityId,
         areaNameById,
       }).markers;
+      /*
+       * A place the traveller is placing gets a marker the moment they click.
+       *
+       * Without it they click the map and see nothing change, which reads as the
+       * click not registering — and then they click again somewhere else.
+       */
+      if (pickedLocation) {
+        built.push({
+          id: '__picked__',
+          lat: pickedLocation.lat,
+          lng: pickedLocation.lng,
+          layer: 'activity',
+          label: t('import.pickedMarker'),
+          noTooltip: false,
+          selected: true,
+          zIndexOffset: 1000,
+        });
+      }
+      return built;
     }
 
     if (tab === 'explore') {
@@ -167,7 +189,7 @@ export default function DestinationMapView({
     if (tab === 'do') {
       const scoped = doScope(bundle.places, bundle.hotels, {
         previewImportId,
-        mentions,
+        candidates,
         placeScope,
         savedPlaces,
         focusedAreaId,
@@ -220,11 +242,13 @@ export default function DestinationMapView({
     areaNameById,
     importPreview,
     previewImportId,
-    mentions,
+    candidates,
     placeScope,
     savedPlaces,
     focusedAreaId,
     destinationId,
+    pickedLocation,
+    t,
   ]);
 
   const routePoints = useMemo(() => {
@@ -324,7 +348,7 @@ export default function DestinationMapView({
     if (tab === 'do') {
       const scoped = doScope(bundle.places, bundle.hotels, {
         previewImportId,
-        mentions,
+        candidates,
         placeScope,
         savedPlaces,
         focusedAreaId: focusedArea?.id ?? null,
@@ -358,7 +382,7 @@ export default function DestinationMapView({
     activeDay?.id,
     activeDay?.items.length,
     previewImportId,
-    mentions,
+    candidates,
     placeScope,
     savedPlaces,
     destinationId,
@@ -458,7 +482,7 @@ function doScope(
   hotels: Hotel[],
   options: {
     previewImportId: string | null;
-    mentions: SocialPlaceMention[];
+    candidates: PlaceCandidate[];
     placeScope: 'all' | 'saved';
     savedPlaces: UserSavedPlace[];
     focusedAreaId: string | null;
@@ -466,13 +490,13 @@ function doScope(
     destinationId: string;
   },
 ): { places: Place[]; hotels: Hotel[] } {
-  const { previewImportId, mentions, placeScope, savedPlaces, focusedAreaId, doCategory, destinationId } = options;
+  const { previewImportId, candidates, placeScope, savedPlaces, focusedAreaId, doCategory, destinationId } = options;
 
   if (previewImportId) {
     const ids = new Set(
-      mentions
-        .filter((mention) => mention.importId === previewImportId && mention.matchedPlaceId)
-        .map((mention) => mention.matchedPlaceId as string),
+      candidates
+        .filter((candidate) => candidate.importId === previewImportId && candidate.matchedPlaceId)
+        .map((candidate) => candidate.matchedPlaceId as string),
     );
     return {
       places: places.filter((place) => ids.has(place.id) && isLocatable(place)),

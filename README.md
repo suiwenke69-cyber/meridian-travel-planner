@@ -32,11 +32,14 @@ Southeast Asia map  →  select a destination  →  destination map
 | `lib/providers/flights/` | Flight data provider abstraction (static + inert Amadeus/Skyscanner adapters) |
 | `lib/efficiency.ts` | The V1 route-efficiency engine |
 | `lib/store/` | Trip and UI state, persisted to `localStorage` |
-| `lib/research/` | Guide extraction, place matching, saved places, the social signal corpus |
-| `components/social/` | The traveller's 导入攻略 flow and 我的收藏 |
-| `app/api/extract/route.ts` | The server-side extraction boundary — the only place an API key is read |
+| `lib/research/` | Guide analysis, place resolution, image storage, saved places, the social signal corpus |
+| `components/social/` | The traveller's 导入小红书攻略 flow and 我的收藏 |
+| `app/api/import/xiaohongshu/` | The retrieval boundary: refuses to scrape, and relays images for a permitted read |
+| `app/api/analyze-guide/route.ts` | Multimodal analysis — the only place a vision key is read |
+| `app/api/resolve-place/route.ts` | External place search — the only place a Places key is read, field-masked |
 | `scripts/e2e.mjs` | Browser end-to-end test covering the whole shipped workflow |
-| `scripts/test-social-import.mts` | 103 behaviour checks for guide import, driven by controlled sample text |
+| `scripts/test-social-import.mts` | Behaviour checks for the import pipeline, on controlled sample text |
+| `scripts/shots-xhs.mjs` | The visual walkthrough of the import flow, desktop and mobile |
 
 ---
 
@@ -99,21 +102,32 @@ Two behaviours matter more than the rest:
 - **The destination opens on EXPLORE, not on a form.** The previous build asked for dates before
   the traveller understood the island. Planning is now something you choose.
 
-**导入攻略 — paste a guide, get places on the map.** Reachable from the header of every tab and from
-PLAN. It takes over the side panel rather than opening a modal, because the promise is that the
-places appear *on the map* and a dialog would cover the answer:
+**导入小红书攻略 — paste a Xiaohongshu guide, get places on the map.** Reachable from the header of
+every tab and from PLAN. It takes over the side panel rather than opening a modal, because the
+promise is that the places appear *on the map* and a dialog would cover the answer.
 
-1. **Paste a link, text, or both.** The URL is kept as provenance and is never fetched; the panel
-   says so where a traveller would otherwise expect us to read it.
-2. **Watch four honest stages** — 读取内容 / 识别地点 / 匹配地图地点 / 等你确认. No percentages, because
+**One source, on purpose.** V1 reads Xiaohongshu and nothing else. A link to another platform is
+refused *by name* rather than silently accepted, and the platform union has a single value so a
+second source cannot arrive by accident.
+
+1. **Paste a link, the text, some screenshots — or all three.** The URL is kept as provenance. If
+   the deployment has an approved retrieval provider it is used; otherwise the limitation is stated
+   in words (`暂时无法直接读取这篇小红书…`) and the two things that still work are offered
+   underneath. An images-only import is a legitimate import.
+2. **Watch four honest stages** — 读取内容 / 识别地点 / 解析地图坐标 / 等你确认. No percentages, because
    there is no meaningful denominator.
-3. **Confirm what it found.** Each candidate shows the name *exactly as the guide wrote it* next to
-   what Meridian believes it is, with the guide's own sentence quoted underneath and its themes,
-   dishes, warnings and times labelled as the guide's words rather than as facts. `✓` preselects,
-   `?` asks, and an unmatched name is never guessed at — the traveller searches the map or creates
-   the place.
-4. **Save, and see them.** Kept places land in **我的收藏**, a scope inside DO, and stay plotted on
-   the map. From there they add to an itinerary through the existing trip builder.
+3. **Confirm what it found.** Each candidate card shows the name *exactly as the post wrote it*, what
+   type of place it is, whether it has a map location and how confident that is in words, and —
+   crucially — **识别来源：正文 + 图片 3、4**. The guide's own sentence, dishes, keywords, warnings and
+   times are labelled as the guide's words rather than as facts. An unmatched name is never guessed
+   at: the traveller searches Meridian, or pins it on the map themselves.
+4. **Assign the pictures.** Every image can be attached to a place by hand, from the card or from
+   the **未分配图片** tray at the bottom. An image belongs to one place; moving it moves it. Tapping
+   an unattributed image asks 这张图是什么地方？ and offers attach, create, or leave for later.
+5. **Save, and see them.** Kept places land in **我的收藏**, a scope inside DO, and stay plotted on
+   the map. The pictures the traveller attached travel with the saved place under their own heading
+   (来自你的攻略) — never merged into the place's canonical photography. From there they add to an
+   itinerary through the existing trip builder, and the existing routing handles the rest.
 
 **`/research` — the internal view.** The same pipeline, with the reviewer's controls: every mention
 with its match band in words, the alias table, saved places and pending submissions. It is labelled
@@ -269,15 +283,20 @@ Set `NEXT_PUBLIC_ROUTING_PROVIDER=geodesic` to disable road routing entirely.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_GUIDE_EXTRACTOR` | unset → `deterministic` | Which extractor the **client** uses |
-| `GUIDE_EXTRACTOR` | unset → `deterministic` | Server-side selector, for the route handler |
-| `DEEPSEEK_API_KEY` | — | **Server only.** Read in `app/api/extract/route.ts` and nowhere else |
-| `OPENAI_API_KEY` | — | **Server only.** Used when no DeepSeek key is present |
-| `GUIDE_EXTRACTOR_MODEL` | `deepseek-chat` / `gpt-4o-mini` | Optional model override |
+| `NEXT_PUBLIC_GUIDE_ANALYZER` | `heuristic` | `multimodal` to read images as well as text |
+| `VISION_API_KEY` | — | **Server only.** Read in `app/api/analyze-guide/route.ts` only |
+| `VISION_API_BASE_URL` | — | An OpenAI-compatible endpoint (DashScope/Qwen-VL, and others) |
+| `VISION_MODEL` | `qwen-vl-max` / `gpt-4o-mini` / Claude Haiku | Optional model override |
+| `ANTHROPIC_API_KEY` | — | **Server only.** Used when no other vision key is present |
+| `NEXT_PUBLIC_XHS_RETRIEVAL` | `0` | Whether to *attempt* reading a Xiaohongshu link |
+| `XIAOHONGSHU_RETRIEVAL_ENDPOINT` | — | **Server only.** A retrieval provider you have an agreement with |
+| `NEXT_PUBLIC_PLACE_PROVIDER` | `none` | `google` to enable external place resolution |
+| `GOOGLE_PLACES_API_KEY` | — | **Server only**, and field-masked |
 
-The API key is never exposed client-side: the browser calls `/api/extract`, an internal route, and
-that handler attaches the credential. On the static GitHub Pages build the route is not deployed and
-the deterministic extractor runs, so the feature works with no key at all.
+Every one of these defaults to OFF. A static deployment cannot reach any of the routes, and a request
+guaranteed to 404 is noise rather than information — so the traveller is told what to do instead. The
+`NEXT_PUBLIC_*` names are public-safe by design: they select a provider, they carry no secret. No
+browser-side module reads an API key, and a test asserts that by reading the sources.
 
 Never commit `.env.local`. `.gitignore` already excludes it.
 
@@ -433,14 +452,21 @@ Coverage: homepage → region map → origin selection → destination selection
 planner → layer toggles → Marriott/Hilton filtering → price tiers → marker → detail card → trip date
 generation → add to itinerary → reorder → move between days → day/map emphasis sync → route line →
 efficiency panel → transport panel → refresh persistence → mobile layout → Chinese UI → the internal
-research view → **importing a guide and seeing its places plotted on the map** → 我的收藏 → the
-unreadable-link failure path → **all nine other destinations load without crashing** → zero console
-errors.
+research view → **importing a Xiaohongshu guide with real screenshots, seeing its places plotted on
+the map, assigning pictures to them by hand, and keeping them** → the unreadable-link fallback →
+**all nine other destinations load without crashing** → zero console errors.
 
-`npm run test:social` is the behavioural suite for guide import: 103 checks over Chinese, English and
-mixed prose, duplicate and partial names, alias learning, unmatched names, saving, creating a place,
-re-import caching, deletion, rate limits and every failure code. It runs entirely against controlled
-sample text — never a live platform, because the product does not fetch them.
+`npm run test:social` is the behavioural suite for guide import: 224 checks over Chinese, English and
+mixed prose, duplicate and partial names, alias learning, the resolution pipeline and its cache, the
+external-provider branch, text/image merging, image assignment and reassignment, the unassigned tray,
+saving with image references, pinning, creating from an image, the private-by-default boundary, the
+cost-control arithmetic, deletion, rate limits, every failure code, and the retrieval route's refusal
+semantics. It also asserts that no browser-side module reads a secret, by reading the sources. It runs
+entirely against controlled sample text — never a live platform, because the product does not fetch
+them.
+
+`scripts/shots-xhs.mjs` drives the same flow in a real browser at desktop and mobile widths and
+writes screenshots to `test-artifacts/xhs/`.
 
 `npm run validate:data` runs the data-integrity checks (schema, coordinate bounds, duplicate ids,
 NaN radii, brand-registry coverage, unknown area references, and a "no price in a description"
@@ -484,6 +510,20 @@ hard timeout so one hung action cannot swallow the run.
     and the traveller resolves it by searching or creating the place.
 12. **Imported guides are private.** There is no shared corpus yet, so 社区攻略 counts are
     legitimately zero and every signal reads 你的攻略. Imported places are per-browser, like trips.
+13. **Xiaohongshu retrieval is not enabled anywhere.** The route, the refusal semantics and the image
+    relay all exist and are tested; what is missing is a provider Meridian is permitted to read
+    through. Until one exists, the product's answer to a pasted link is the honest fallback: paste
+    the text or upload the screenshots. Nothing is scraped, ever — no login, no CAPTCHA solving, no
+    anti-bot evasion, no headless browser, and a 403 ends the attempt.
+14. **Image analysis needs a server.** On GitHub Pages there is no route to call, so the built-in
+    analyzer reads text and the traveller assigns the pictures by hand. That is a complete workflow,
+    and it is not §5's multimodal reading. The prompt and the batching are implemented; they need a
+    deployment with a key.
+15. **One source.** TikTok, Instagram, Douyin, YouTube and generic blog import are out of scope. A
+    link to another platform is refused by name rather than silently accepted.
+16. **Image analysis quality is unmeasured.** Nobody has benchmarked a given vision model against a
+    Xiaohongshu menu photograph, and `IMAGE_PROPOSAL_FLOOR` is a judgement rather than a measurement.
+    The unassigned tray exists precisely because that number is not trustworthy on its own.
 
 ---
 
@@ -566,7 +606,7 @@ China is an **origin market only**. There are no Chinese destinations, deliberat
 product is fully usable in it.
 
 The localization is an architecture, not a find-and-replace. `lib/i18n/messages.ts` holds
-702 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
+787 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
 which makes a missing or misspelled translation a **compile error** rather than a raw key
 in the interface.
 
@@ -607,28 +647,64 @@ Nothing reaches a traveller until it has been accepted, and what reaches them is
 aggregate over accepted mentions — 在 N 份已收录攻略中被提及 — never a popularity claim.
 A fresh install shows no signals at all, because there is no imported research to show.
 
-### How extraction is wired
+### How analysis is wired
 
-`lib/research/extractor.ts` defines one `GuideExtractor` interface and two implementations:
+`lib/research/analyzer.ts` defines one `GuideAnalyzer` interface and two implementations:
 
-| Provider | Runs where | Needs a key | Behaviour |
+| Analyzer | Runs where | Needs a key | Behaviour |
 | --- | --- | --- | --- |
-| `deterministic` (default) | The browser | No | Rule-based: dictionary, explicit patterns, constrained heuristic |
-| `llm` | Server, via `/api/extract` | Yes | Structured-output extraction from a chat model |
+| `heuristic` (default) | The browser | No | Reads the text with the rule-based extractor; cannot see pictures, and says so |
+| `multimodal` | Server, via `/api/analyze-guide` | Yes | Reads text AND downscaled images in batches of four, returning findings with provenance |
 
-The client never holds a credential. It calls our own route, and `app/api/extract/route.ts` is the
-single place `DEEPSEEK_API_KEY` or `OPENAI_API_KEY` is read. To turn the model on where a server
-exists:
+Both return the same `GuideAnalyzerResult`, so the merge step, the resolution pipeline and the review
+screen cannot tell which produced their input: a deployment that gains a key gains image
+understanding without any other code changing.
 
 ```bash
-GUIDE_EXTRACTOR=llm
-NEXT_PUBLIC_GUIDE_EXTRACTOR=llm     # tells the client to call the route
-DEEPSEEK_API_KEY=...                # or OPENAI_API_KEY
+# Analysis
+NEXT_PUBLIC_GUIDE_ANALYZER=multimodal
+VISION_API_KEY=...            # OpenAI-compatible endpoint, OpenAI, or Anthropic
+VISION_API_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+VISION_MODEL=qwen-vl-max
 ```
 
-On the static GitHub Pages build the route is not deployed at all, `NEXT_PUBLIC_GUIDE_EXTRACTOR` is
-unset, and the deterministic extractor runs — the feature degrades rather than breaking, and a key
-in the environment never silently becomes a key in a JavaScript bundle.
+### How place resolution is wired
+
+`lib/research/place-resolver.ts` runs the pipeline in a fixed and non-negotiable order:
+
+1. **Meridian's canonical dataset** — a place we curated, photographed and verified.
+2. **The alias table** — a name this profile already confirmed.
+3. **An external place search** — somebody else's map knows it.
+4. **The traveller** — they point at the map, or create it.
+
+Each step is strictly more expensive and less trustworthy than the one before, which is what makes
+the order correct rather than merely convenient. A hit at step 3 is offered as a QUESTION and never
+written onto the map: confirming it saves a place the traveller owns, pending review, because "a map
+search found something with this name" and "Meridian knows this place" are different claims.
+
+```bash
+NEXT_PUBLIC_PLACE_PROVIDER=google   # OFF by default: every call costs money
+GOOGLE_PLACES_API_KEY=...           # server-only
+```
+
+The field mask is a literal in the route — `places.id, places.displayName,
+places.formattedAddress, places.location, places.primaryType` — so the expensive SKUs (ratings,
+photos, opening hours, reviews, price level) can never be requested, by a client or by accident. A
+confirmed hit is cached for 90 days, and confirming one records an alias, so the steady state is
+zero external calls.
+
+### Where nothing is modelled
+
+**A language model never supplies a coordinate.** The system prompt says so explicitly, and the
+pipeline has no parameter through which one could arrive. A model that has never seen Bali cannot
+know where a beach club is, and a plausible-looking wrong latitude would silently corrupt an
+itinerary with a stop that does not exist. Positions come from Meridian's data, an external place
+provider, or the traveller's finger.
+
+On the static GitHub Pages build none of these routes are deployed and neither switch is set, so the
+feature runs the heuristic analyzer, resolves against Meridian's own data, and relies on manual
+image assignment. That is a complete workflow rather than a degraded one — and a key in the
+environment never silently becomes a key in a JavaScript bundle.
 
 Matching compares a **loose** key (noise words stripped) and a **strict** key (punctuation and
 accents only), because stripping noise destroys names like `Uluwatu Temple`. Two candidates within

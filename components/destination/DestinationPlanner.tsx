@@ -27,7 +27,7 @@ import { ExplorePanel } from './panels/ExplorePanel';
 import { StayPanel } from './panels/StayPanel';
 import { DoPanel } from './panels/DoPanel';
 import { PlanPanel } from './panels/PlanPanel';
-import { ImportGuidePanel } from '../social/ImportGuidePanel';
+import { XiaohongshuImportPanel } from '../social/XiaohongshuImportPanel';
 
 const DestinationMapView = dynamic(() => import('./DestinationMapView'), {
   ssr: false,
@@ -195,7 +195,7 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
   };
 
   const panel = importOpen ? (
-    <ImportGuidePanel destinationId={destinationId} />
+    <XiaohongshuImportPanel destinationId={destinationId} />
   ) : (
     <DestinationPanel
       tab={tab}

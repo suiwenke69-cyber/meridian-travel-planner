@@ -157,6 +157,56 @@ Still open from this iteration:
 
 ---
 
+## V1.3 — Xiaohongshu import, properly
+
+**The product narrowed to one source so it could get one workflow right.**
+
+The previous pass accepted nine platforms and read only pasted text. That breadth
+made everything worse: extraction, layout and copy all hedged for sources nobody
+had tested, and the source most of this product's users actually use stayed a
+paste box. V1 now reads **Xiaohongshu only** — link, text and images — and the
+one-value `SocialPlatform` union means adding a second source is a deliberate
+change rather than something a union already permitted.
+
+- **Text AND pictures.** A place named in the caption and visible on a shopfront
+  is one place with two pieces of evidence, not two places (§24). All fourteen
+  travel place types are detected, from 酒店 to 交通节点.
+- **Real place resolution, in order.** Meridian's own dataset, then the alias
+  table this profile has confirmed, then an external place search, then the
+  traveller pointing at the map. A model never supplies a coordinate — a
+  plausible-looking wrong latitude is the most damaging thing this feature could
+  emit, and the prompt forbids it in words.
+- **Image → place assignment is a first-class interaction.** AI suggestions are
+  suggestions: the traveller ticks, moves, or clears them, and a human decision
+  is never overwritten by a later analysis run. An **unassigned image tray**
+  makes imperfect analysis survivable instead of hiding it.
+- **Imported images are private by construction.** They live in IndexedDB, are
+  written `private_import` by the only function that can create them, and are
+  shown in a saved place under their own heading — never merged into the place's
+  canonical photography. Deleting an import deletes the bytes.
+- **Cost control on both axes.** Client-side downscaling to three sizes for three
+  jobs, SHA-256 dedupe, a 20-image / 12MB-per-file budget, cached analyses, and a
+  field-masked external lookup that runs only after Meridian fails and only when a
+  provider is configured.
+- **No retrieval means no request.** With no approved provider, the honest
+  fallback is offered immediately rather than a doomed fetch: paste the text or
+  upload screenshots, and the flow continues.
+
+Still open from this iteration:
+
+- **A retrieval agreement.** The route, the refusal semantics and the image relay
+  all exist; what is missing is a provider Meridian is permitted to read through.
+  Until then the fallback is the product.
+- **Vision by default.** The multimodal analyzer is implemented and the prompt is
+  written, but it needs a deployment with a key. On GitHub Pages the built-in
+  analyzer reads text and the traveller assigns pictures by hand — a complete
+  workflow, not a degraded one, but not the whole of §5.
+- **Verified image analysis quality.** Nobody has measured how well a given model
+  reads a Xiaohongshu menu photograph, and `IMAGE_PROPOSAL_FLOOR` is a judgement
+  rather than a measurement.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces
@@ -198,9 +248,12 @@ Still open from this iteration:
   hand-off, not the product.
 - **Content marketing.** No listicles, no SEO articles, no hero banners. If it does not help someone
   understand where things are, it does not ship.
-- **Scraping social platforms.** No headless browsers, no logged-in sessions, no CAPTCHA solving, no
-  rotation of user agents. The platforms forbid it, it breaks monthly, and it would put a
-  traveller's own account at risk.
+- **Scraping Xiaohongshu — or any platform.** No headless browsers, no logged-in sessions, no
+  CAPTCHA or signature solving, no rotation of user agents or proxies, no private or followers-only
+  content. The platform forbids it, it breaks monthly, and it would put a traveller's own account at
+  risk. A 403 is the end of the attempt, not the start of a workaround.
+- **A second source platform.** TikTok, Instagram, Douyin and YouTube are out of scope until the
+  Xiaohongshu workflow is genuinely excellent. The union has one value on purpose.
 - **A social network.** No feed, no following, no comments, no messaging, no creator profiles, no
   monetisation of other people's guides. Meridian reads the text a traveller hands it and gives back
   a map.

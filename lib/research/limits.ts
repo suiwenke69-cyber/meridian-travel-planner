@@ -61,10 +61,23 @@ export function stripBoilerplate(text: string): string {
     .trim();
 }
 
-export function checkImportInput(input: { url?: string; text?: string }): LimitViolation | null {
+/**
+ * Whether there is anything to import at all.
+ *
+ * `imageCount` is part of the check, not an afterthought: §28's manual mode is
+ * "链接 optional, 正文 optional, 上传图片", and a guide that arrives as six
+ * screenshots and nothing else is a legitimate import. The first version only
+ * looked at url and text, so adding pictures to an empty form was refused as
+ * "please paste a link or text" — which is exactly the wrong thing to say to
+ * somebody who just uploaded six screenshots.
+ */
+export function checkImportInput(input: { url?: string; text?: string; imageCount?: number }): LimitViolation | null {
   const url = (input.url ?? '').trim();
   const text = (input.text ?? '').trim();
-  if (url.length === 0 && text.length === 0) return { code: 'empty_input', messageKey: 'import.error.empty' };
+  const imageCount = input.imageCount ?? 0;
+  if (url.length === 0 && text.length === 0 && imageCount === 0) {
+    return { code: 'empty_input', messageKey: 'import.error.empty' };
+  }
   if (url.length > MAX_URL_LENGTH) return { code: 'url_too_long', messageKey: 'import.error.urlTooLong' };
   if (text.length > MAX_TEXT_LENGTH) {
     return {

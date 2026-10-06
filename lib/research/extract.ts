@@ -1,6 +1,6 @@
 import type { MentionSentiment, RecommendationType } from '../types';
 import { matchPlace, type MatchResult, type MatchTarget } from './match';
-import { isCjk, normalizePlaceName } from './normalize';
+import { normalizePlaceName } from './normalize';
 
 /**
  * Turning a pasted guide into structured mentions.
@@ -87,6 +87,17 @@ const TYPE_KEYWORDS: Array<{ type: RecommendationType; test: RegExp }> = [
     test: /餐厅|饭店|餐馆|美食|必吃|推荐菜|招牌|人均|好吃|早餐|午餐|晚餐|吃了|去吃|restaurant|warung|eatery|dining|dinner|lunch|breakfast/i,
   },
   { type: 'bar', test: /酒吧|鸡尾酒|夜店|小酒馆|cocktail|bar\b|nightclub|live\s?music/i },
+  /*
+   * Transport nodes are places a guide tells you to BE at — the meeting point
+   * for a day trip, the harbour a fast boat leaves from. They are named in
+   * guides constantly and were previously either missed or misfiled as an
+   * activity, which matters because they are the one category a traveller has
+   * to arrive at on time.
+   */
+  {
+    type: 'transport',
+    test: /码头|港口|机场|车站|集散中心|出发|集合点|harbou?r|port|airport|terminal|jetty|pier|ferry|meeting\s?point/i,
+  },
   { type: 'beach', test: /海滩|沙滩|beach|pantai/i },
   { type: 'nature', test: /瀑布|火山|梯田|森林|稻田|国家公园|waterfall|volcano|rice\s?terrace|jungle/i },
   { type: 'culture', test: /寺庙|神庙|皇宫|文化|博物馆|temple|palace|museum|market|集市/i },

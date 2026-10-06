@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Multi-city origins, Simplified Chinese primary, Bali the reference destination, social guide import in the traveller's hands. No live data.",
+  "status": "V1 — working end to end. Xiaohongshu-only guide import with text + image analysis, multi-city origins, Simplified Chinese primary, Bali the reference destination. No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -79,46 +79,45 @@
     "MapLibre's worker failed to load under the bundler, leaving a blank canvas with no error"
   ],
   "testResults": {
-    "checks": 148,
-    "passed": 148,
-    "failed": 0,
-    "consoleErrors": 0,
-    "pageErrors": 0,
-    "failedRequests": 0,
-    "productionBuild": "passes; 10 destinations pre-rendered",
-    "staticExport": "passes; app/api stashed and restored, MapLibre worker present",
-    "socialImportChecks": {
-      "checks": 103,
-      "passed": 103,
+    "e2e": {
+      "checks": 172,
+      "passed": 172,
+      "failed": 0,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "failedRequests": 0
+    },
+    "socialImport": {
+      "checks": 224,
+      "passed": 224,
       "failed": 0,
       "command": "npm run test:social"
     },
     "typecheck": "tsc --noEmit clean",
-    "dataValidation": "passes"
+    "dataValidation": "passes",
+    "productionBuild": "passes; 10 destinations pre-rendered",
+    "staticExport": "passes; app/api stashed and restored, MapLibre worker present",
+    "visual": "scripts/shots-xhs.mjs at 1440x900 and 390x844, inspected by hand, 0 console errors"
   },
   "knownLimitations": [
     "64 of 110 connections are curated route knowledge, not verified schedules; they are marked 待确认 and carry a curation date",
     "Nothing refreshes connection data automatically — verifiedAt exists so a review can be built, and has not been",
-    "No nearby-airport logic: nearbyOriginIds is displayed as a hint and nothing acts on it",
-    "No multimodal origin journey — 苏州 → PVG → Bali is supported by the model and not computed",
-    "The origin is not yet on the itinerary timeline, which still starts at the destination airport",
-    "No visa or entry data for any origin, deliberately",
-    "The 97 Bali restaurants and activities still have no photography",
-    "Six Bali places still have no verified location",
-    "Traffic is not modelled; measured legs are free-flow estimates",
+    "No multimodal analysis has run against a real vision key; the prompt and contract are tested, the output quality is not",
+    "IMAGE_PROPOSAL_FLOOR (0.6) is a judgement, not a measurement against a labelled set",
+    "No approved Xiaohongshu retrieval provider is configured anywhere, so the fallback is the product",
+    "Only Xiaohongshu is supported; TikTok, Instagram, Douyin, YouTube and blog import are out of scope",
+    "Imported images and saved places live in one browser (IndexedDB + localStorage); there are no accounts",
+    "The 97 Bali restaurants and activities still have no photography, and six places still have no verified location",
     "Only Bali is deep; the other nine destinations are architecturally complete but thin",
-    "No backend and no accounts; trips, research and the origin live in localStorage",
     "No prices anywhere — hotel cost is a positioning tier with its basis displayed",
-    "Guide import reads pasted text only: no screenshot OCR, no video transcript, and no fetching of the source URL",
-    "The default extractor is rule-based: an unrecognised name is reported as unmatched rather than guessed at",
-    "Imported guides are private, so 社区攻略 counts are zero and every signal reads 你的攻略"
+    "Traffic is not modelled; measured legs are free-flow estimates"
   ],
   "documents": {
     "process": "/docs/PROCESS.md",
     "readme": "/docs/README.md",
     "roadmap": "/docs/ROADMAP.md",
     "browsableDossier": "/process",
-    "dossierLines": "PROCESS.md documents the original build, the destination redesign, the origin iteration and the social guide import"
+    "dossierLines": "PROCESS.md documents the original build, the destination redesign, the origin iteration, and the Xiaohongshu import"
   },
   "destinationExperience": {
     "navigation": [
@@ -208,82 +207,147 @@
     "overlay": "lib/data/zh/bali-zh.ts. Chinese copy is merged by the registry so the hand-verified geography files are never touched by a translation pass."
   },
   "research": {
-    "purpose": "Turn places mentioned in a travel guide into structured places on the traveller's map, and from there into an itinerary.",
-    "coreProductMoment": "Paste a travel guide, and its places appear on my map.",
-    "isASeparateLayer": true,
-    "why": "Production POI data is curated and verifiable; a social guide is a discovery signal. Merging them would let an unverified mention become a published place, so the two meet only at a place id the traveller confirms.",
-    "twoSurfaces": {
-      "traveller": "导入攻略, reachable from every destination tab's header and from PLAN. Takes over the side panel rather than opening a modal, so the map stays visible while candidates are reviewed.",
-      "internal": "/research — the reviewer's view: mentions with their match bands in words, the alias table, saved places and pending submissions. Labelled as internal and not reachable from the traveller's four tabs."
+    "purpose": "Turn a Xiaohongshu post — its text AND its images — into structured places on the traveller's map, and from there into an itinerary.",
+    "coreProductMoment": "把这篇文章直接变成一张可编辑的旅行地图。",
+    "supportedSources": {
+      "v1": [
+        "xiaohongshu"
+      ],
+      "whyOneValue": "SocialPlatform is a ONE-value union on purpose. A nine-value union is a standing invitation for a second platform to arrive by accident; a one-value union makes the next source a deliberate change to the union, a provider and a copy pass.",
+      "refused": [
+        "tiktok",
+        "instagram",
+        "douyin",
+        "youtube",
+        "bilibili",
+        "generic blog"
+      ],
+      "refusalUx": "A link to another platform is refused by name: 这看起来不是小红书链接。V1 只支持小红书…"
     },
-    "flow": [
-      "Paste a link, text, or both. The URL is kept as provenance and is never fetched.",
-      "Four honest stages: 读取内容 / 识别地点 / 匹配地图地点 / 等你确认. No percentages, because there is no meaningful denominator.",
-      "Review: the name exactly as the guide wrote it, next to what Meridian believes it is, with the guide's own sentence quoted and its themes, dishes, warnings and times labelled as the guide's words.",
-      "Tick what to keep, then 保存 N 个地点. Kept places land in 我的收藏 and stay plotted on the map.",
-      "From 我的收藏, places add to an itinerary through the existing trip builder."
-    ],
-    "platforms": [
-      "xiaohongshu",
-      "douyin",
-      "tiktok",
-      "instagram",
-      "youtube",
-      "bilibili",
-      "blog",
-      "manual",
-      "other"
-    ],
-    "notAScraper": "Xiaohongshu, Douyin, TikTok and Instagram prohibit automated collection. The URL is stored for provenance and the text is what the traveller pastes. No login, no CAPTCHA solving, no anti-bot evasion, no headless browser — and the interface states the limitation where the traveller would otherwise expect a fetch: 暂时无法直接读取这个平台的内容。",
-    "extraction": "Three passes in order of trust: dictionary against the canonical corpus (longest-first), explicit patterns (店名：/ 📍 / numbered lists / 「」), then a constrained heuristic that only captures a name adjacent to a venue noun, plus a visit-verb gate so a sentence like 「在长谷吃了 Milk & Madu」 is not lost.",
-    "extractorAbstraction": {
-      "file": "lib/research/extractor.ts",
-      "interface": "GuideExtractor",
+    "retrieval": {
+      "approach": "A single polite request to an approved retrieval provider, server-side, only when XIAOHONGSHU_RETRIEVAL_ENDPOINT is configured.",
+      "never": [
+        "log in",
+        "use or store a session/cookie",
+        "solve or bypass a CAPTCHA or signature",
+        "rotate user agents, proxies or fingerprints",
+        "touch private or followers-only content",
+        "run a headless browser",
+        "retry a 401/403/429"
+      ],
+      "refusalIsFinal": "A provider refusal is reported as `unavailable` and is not retried. The platform said no; the traveller keeps working by pasting text or uploading screenshots.",
+      "imageRelay": "GET /api/import/xiaohongshu/image — one url per request, allowlisted CDN hosts, 8MB ceiling, image-only content type, private no-store. It is a relay, not an open proxy.",
+      "fallback": "暂时无法直接读取这篇小红书。你仍然可以上传/粘贴内容继续整理。",
+      "fallbackIsOfflineByDefault": "NEXT_PUBLIC_XHS_RETRIEVAL defaults to 0, so with no provider configured the panel shows the fallback immediately instead of making a request guaranteed to 404."
+    },
+    "analysis": {
+      "abstraction": "lib/research/analyzer.ts — one GuideAnalyzer interface, two implementations, identical result shape",
       "providers": {
-        "deterministic": "Rule-based, runs in the browser, no key, no cost. The DEFAULT, so the feature is demonstrable offline.",
-        "llm": "POSTs to /api/extract, which is the only place DEEPSEEK_API_KEY / OPENAI_API_KEY is read. The client never holds a credential."
+        "heuristic": "Default. Browser. No key. Reads the text with the rule-based extractor; marks images `unsupported` and says so rather than guessing from a filename.",
+        "multimodal": "Server, via /api/analyze-guide. Reads text plus downscaled images, four per batch. OpenAI-compatible endpoints, OpenAI or Anthropic."
       },
-      "staticDeployment": "GitHub Pages has no server, so /api/extract is not deployed and the deterministic extractor runs. The feature degrades rather than breaking, and a key in the environment never becomes a key in a bundle.",
-      "envVars": [
-        "NEXT_PUBLIC_GUIDE_EXTRACTOR",
-        "GUIDE_EXTRACTOR",
-        "DEEPSEEK_API_KEY",
-        "OPENAI_API_KEY",
-        "GUIDE_EXTRACTOR_MODEL"
-      ]
+      "imageRoles": [
+        "shopfronts",
+        "signs",
+        "menus",
+        "branding",
+        "Chinese and English labels",
+        "maps",
+        "annotated screenshots",
+        "scene context",
+        "image sequence"
+      ],
+      "notOcrOnly": "The prompt reads visible text, branding and scene, and relates a sequence of frames to the post text.",
+      "merging": "mergeFindings collapses detections of the same place across text and images into ONE candidate with detectedFromText and the union of detectedFromImageIds (§24). Different spellings are left separate — that judgement belongs to the matcher, which has the corpus and the alias table.",
+      "lowConfidence": "An image-only finding below IMAGE_PROPOSAL_FLOOR (0.6) is NOT turned into a place candidate. The image goes to the unassigned tray instead, where it reads as a question rather than an answer (§26)."
     },
-    "matching": {
-      "method": "Loose key (locational and categorical noise stripped) plus strict key (punctuation and accents only), because noise stripping destroys names that legitimately contain a region word — Uluwatu Temple among them.",
-      "floor": 0.55,
-      "ambiguity": "Two candidates within 0.05 of each other are treated as no match at all.",
-      "bands": "high (≥0.9) preselects, medium (≥0.55) asks, low never guesses. The interface speaks in bands, never in numbers.",
-      "hotels": "Hotels are match targets alongside places, because a guide names where you slept as readily as where you ate.",
-      "aliases": "Confirming a name records a PlaceAlias owned by that profile, so the next import matches it instantly. Aliases are private to their owner."
+    "placeResolution": {
+      "order": [
+        "Meridian canonical dataset",
+        "alias table",
+        "external place search",
+        "manual map pin"
+      ],
+      "why": "Each step is strictly more expensive and less trustworthy than the one before, so the order is correctness rather than convenience.",
+      "modelNeverSuppliesCoordinates": "Stated in the system prompt, absent from the pipeline's types, and visible in the UI. A model that has never seen Bali cannot place a beach club, and a plausible wrong latitude would corrupt an itinerary with a stop that does not exist.",
+      "externalHitIsAQuestion": "An external hit is offered, never auto-accepted. Confirming one saves a UserPlaceSubmission the traveller owns, pending review — because 'a map search found this name' and 'Meridian knows this place' are different claims.",
+      "manualPin": "The traveller clicks the map; the coordinate is theirs. The place is a UserPlaceSubmission, never canonical."
     },
-    "duplicatePrevention": "Every mention resolves to a canonical place id, so La Brisa / La Brisa Bali / La Brisa Canggu become one place rather than three. Saving is idempotent and stores references, never copies. There is no 'accept Meridian's guess' option for an unmatched name — a wrong automatic answer is how duplicate canonical places are born.",
-    "userCreatedPlaces": "A place the dataset does not hold becomes a UserPlaceSubmission in pending_verification, private to its creator and never written into the canonical registry. Shown in 我的收藏 in its own visual register, labelled 待核实.",
-    "reviewGate": "待确认 → 已保存 / 已忽略. Nothing is published automatically, and nothing is preselected except a high-band match.",
-    "publication": "Signals are an aggregate over the traveller's own saved mentions: 在 N 份已收录攻略中被提及, with the caveat 不代表全网热度. The two corpora — 你的攻略 and 社区攻略 — are rendered separately and never summed. No popularity ranking exists anywhere in the product.",
-    "emptyByDefault": "A fresh install shows no signals, because there are no imported guides. Seeding fake research was rejected.",
-    "copyrightAndPrivacy": "A guide's photographs and prose belong to whoever made them. Meridian rehosts neither: it keeps a link and the traveller's own paste, shows at most one short sentence as the reason a name was extracted, and never reproduces the source. Deleting an import deletes the text it held. Every record carries a local profile id, so one traveller's import cannot reach another's view.",
-    "failureStates": [
-      "empty_input",
-      "url_too_long",
-      "text_too_long",
-      "too_many_imports",
-      "content_unavailable",
-      "empty_text",
-      "no_places_detected",
-      "extraction_failed"
-    ],
-    "limits": {
-      "maxTextLength": 20000,
-      "maxUrlLength": 2048,
-      "maxImportsPerWindow": 20,
-      "windowMinutes": 10,
-      "maxMentionsPerImport": 60
+    "imageAssignment": {
+      "coreRequirement": true,
+      "model": "ImagePlaceAssignment { imageId, candidateId, source: 'suggested' | 'user' }",
+      "humanWins": "A re-analysis only ever replaces `suggested` rows, so a user correction survives it (§33).",
+      "oneImageOnePlace": "Reassigning MOVES an image rather than copying it, so a picture cannot render under two cards or make the unassigned count lie.",
+      "unassignedTray": "未分配图片 — every image attached to no place, tappable to attach, create from, or leave for later (§17).",
+      "fromImage": "「这张图是什么地方？」 → attach to a known place, search Meridian, or create a place with a map-pinned coordinate (§18)."
     },
-    "knownLimitations": "Reads prose, not images — and a screenshot is how most Xiaohongshu guides actually arrive. Does not fetch a video transcript. The default extractor finds names it recognises and names next to a category keyword; it does not resolve pronouns or follow a link inside the guide. Community corpus does not exist yet, so 社区攻略 counts are legitimately zero."
+    "images": {
+      "storage": "IndexedDB (meridian.images.v1), never localStorage: one base64 screenshot would blow the ~5MB quota and take the traveller's itinerary down with it.",
+      "threeSizes": {
+        "thumb": "320px, lists only — a review screen with twenty cards must not decode twenty 1600px bitmaps",
+        "stored": "1600px, what the traveller looks at",
+        "analysis": "1024px, generated on demand and never persisted; sized so signage survives the downscale"
+      },
+      "dedupe": "SHA-256 of the STORED bytes, so re-uploading the same screenshot costs one record and one set of bytes.",
+      "deletedWithTheImport": "deleteImport purges the text, candidates, analyses, assignments AND the image bytes."
+    },
+    "privacy": {
+      "boundary": "An imported image is `private_import`, written by the only function that can create an image record — buildImageRecord in lib/research/image-rules.ts — which has no parameter for visibility.",
+      "neverPublic": "No code path promotes an imported picture to canonical photography, hotel gallery or community image (§20).",
+      "futureContribution": "`user_contributed` exists for §21's own-photo-with-consent flow and is unreachable from every import path.",
+      "savedPlaceSplit": "A saved place shows canonical photography and, under a separate heading, 来自你的攻略（只有你能看到） (§22, §23).",
+      "copyright": "No creator text or imagery is republished. At most one short sentence is quoted as the reason a name was extracted."
+    },
+    "costControls": {
+      "images": {
+        "perImport": 20,
+        "perFileBytes": 12582912,
+        "importBytes": 41943040
+      },
+      "analysis": {
+        "batchSize": 4,
+        "maxEdge": 1024,
+        "cachedBy": "content hash + analysis version"
+      },
+      "externalSearch": {
+        "defaultOff": true,
+        "onlyAfterMeridianFails": true,
+        "fieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType",
+        "neverRequests": [
+          "rating",
+          "photos",
+          "openingHours",
+          "reviews",
+          "priceLevel",
+          "internationalPhoneNumber"
+        ],
+        "cacheTtlDays": 90,
+        "cacheMaxEntries": 400
+      }
+    },
+    "endpoints": {
+      "retrieval": "POST /api/import/xiaohongshu",
+      "retrievalImages": "GET /api/import/xiaohongshu/image",
+      "analysis": "POST /api/analyze-guide",
+      "resolution": "POST /api/resolve-place"
+    },
+    "apiKeySecurity": "No browser-side module reads an API key, asserted by a test that reads the sources. Every secret is read in a route handler, and on the static GitHub Pages build none of those routes are deployed.",
+    "placeholderTypes": [
+      "restaurant",
+      "cafe",
+      "beachclub",
+      "bar",
+      "beach",
+      "nature",
+      "culture",
+      "activity",
+      "hotel",
+      "shopping",
+      "wellness",
+      "area",
+      "transport",
+      "unknown"
+    ]
   },
   "coordinateSourcing": {
     "method": "scripts/geocode-pois.mjs resolves placeholder coordinates against Nominatim (OpenStreetMap) and records the OSM element in coordNote.",

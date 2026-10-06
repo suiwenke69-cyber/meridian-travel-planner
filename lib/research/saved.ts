@@ -134,20 +134,20 @@ export function useSavedEntries(destinationId: string): { entries: SavedEntry[];
 
 /** How many guides mention each saved place, split by who the guide belongs to. */
 export function useSavedProvenance(): Map<string, { mine: number; community: number }> {
-  const mentions = useResearchStore((s) => s.mentions);
+  const candidates = useResearchStore((s) => s.candidates);
   const imports = useResearchStore((s) => s.imports);
 
   return useMemo(() => {
     const visibility = new Map(imports.map((entry) => [entry.id, entry.visibility]));
     const out = new Map<string, { mine: number; community: number }>();
-    for (const mention of mentions) {
-      if (!mention.matchedPlaceId) continue;
-      if (mention.userDecision !== 'save') continue;
-      const bucket = out.get(mention.matchedPlaceId) ?? { mine: 0, community: 0 };
-      if (visibility.get(mention.importId) === 'community') bucket.community += 1;
+    for (const candidate of candidates) {
+      if (!candidate.matchedPlaceId) continue;
+      if (candidate.userDecision !== 'save') continue;
+      const bucket = out.get(candidate.matchedPlaceId) ?? { mine: 0, community: 0 };
+      if (visibility.get(candidate.importId) === 'community') bucket.community += 1;
       else bucket.mine += 1;
-      out.set(mention.matchedPlaceId, bucket);
+      out.set(candidate.matchedPlaceId, bucket);
     }
     return out;
-  }, [mentions, imports]);
+  }, [candidates, imports]);
 }

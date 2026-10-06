@@ -1,4 +1,4 @@
-import type { SocialImport, SocialPlaceMention, SocialSignals, SocialPlatform } from '../types';
+import type { PlaceCandidate, SocialSignals, SocialPlatform, XiaohongshuImport } from '../types';
 
 /**
  * Aggregating accepted mentions into the signal a traveller sees.
@@ -18,8 +18,8 @@ import type { SocialImport, SocialPlaceMention, SocialSignals, SocialPlatform } 
  */
 
 export interface SignalSources {
-  mentions: SocialPlaceMention[];
-  sources: SocialImport[];
+  candidates: PlaceCandidate[];
+  sources: XiaohongshuImport[];
 }
 
 const MIN_FREQUENCY = 2;
@@ -64,10 +64,10 @@ function themesOf(notes: string[]): string[] {
     .map(([id]) => THEME_LABELS[id] ?? id);
 }
 
-function itemsOf(mentions: SocialPlaceMention[]): string[] {
+function itemsOf(candidates: PlaceCandidate[]): string[] {
   const counts = new Map<string, number>();
-  for (const mention of mentions) {
-    for (const item of mention.extractedItems) {
+  for (const candidate of candidates) {
+    for (const item of candidate.extractedItems) {
       const key = item.trim();
       if (key.length === 0) continue;
       counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -86,23 +86,23 @@ function itemsOf(mentions: SocialPlaceMention[]): string[] {
  * A place with no accepted mentions gets no entry — and its card renders nothing
  * rather than an empty "攻略参考" block claiming zero.
  */
-export function aggregateSignals({ mentions, sources }: SignalSources): Map<string, SocialSignals> {
+export function aggregateSignals({ candidates, sources }: SignalSources): Map<string, SocialSignals> {
   const sourceById = new Map(sources.map((s) => [s.id, s]));
-  const byPlace = new Map<string, SocialPlaceMention[]>();
+  const byPlace = new Map<string, PlaceCandidate[]>();
 
-  for (const mention of mentions) {
+  for (const candidate of candidates) {
     /*
      * Only what the traveller ACCEPTED counts, and only against an import that
      * still exists. An extracted mention is a machine's guess about a name in a
      * paste; counting it before a human confirmed it would let the importer
      * inflate a venue's own numbers.
      */
-    if (mention.userDecision !== 'save') continue;
-    if (!mention.matchedPlaceId) continue;
-    if (!sourceById.has(mention.importId)) continue;
-    const list = byPlace.get(mention.matchedPlaceId) ?? [];
-    list.push(mention);
-    byPlace.set(mention.matchedPlaceId, list);
+    if (candidate.userDecision !== 'save') continue;
+    if (!candidate.matchedPlaceId) continue;
+    if (!sourceById.has(candidate.importId)) continue;
+    const list = byPlace.get(candidate.matchedPlaceId) ?? [];
+    list.push(candidate);
+    byPlace.set(candidate.matchedPlaceId, list);
   }
 
   const out = new Map<string, SocialSignals>();
@@ -125,7 +125,7 @@ export function aggregateSignals({ mentions, sources }: SignalSources): Map<stri
       mentionCount: sourceIds.length,
       platforms,
       themes: themesOf(
-        list.flatMap((m) => [m.rawPlaceName, ...m.contextThemes, ...m.positiveThemes, ...m.warnings]),
+        list.flatMap((m) => [m.rawName, ...m.contextThemes, ...m.positiveThemes, ...m.warnings]),
       ),
       frequentlyMentioned: itemsOf(list),
       lastReviewedAt: dates.sort().at(-1),
@@ -134,10 +134,10 @@ export function aggregateSignals({ mentions, sources }: SignalSources): Map<stri
   return out;
 }
 
-/** Mentions that still need a human decision, in the order they should be worked. */
-export function reviewQueue(mentions: SocialPlaceMention[]): SocialPlaceMention[] {
+/** Candidates that still need a human decision, in the order they should be worked. */
+export function reviewQueue(candidates: PlaceCandidate[]): PlaceCandidate[] {
   const rank: Record<string, number> = { matched: 0, possible_match: 1, unmatched: 2 };
-  return mentions
+  return candidates
     .filter((m) => m.userDecision === 'pending')
     .sort(
       (a, b) =>

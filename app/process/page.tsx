@@ -166,6 +166,51 @@ const SCREENSHOTS: Array<{ file: string; title: string; body: string }> = [
     body: 'The bottom sheet starts collapsed so the map owns the screen, with the search field visible as the invitation to explore. The map refits when the sheet changes size.',
   },
   {
+    file: '60-zh-xhs-input.jpg',
+    title: '导入小红书攻略 — one source, on purpose',
+    body: 'A link, the text, screenshots, or all three. The platform limitation is stated where the traveller would otherwise expect us to fetch the link, and an images-only import is a legitimate import.',
+  },
+  {
+    file: '61-zh-xhs-platform-refusal.jpg',
+    title: 'Another platform is refused by name',
+    body: 'V1 reads Xiaohongshu only. A TikTok link is called out rather than silently accepted and failing later, which is what a generic multi-platform selector would have produced.',
+  },
+  {
+    file: '62-zh-xhs-images-uploaded.jpg',
+    title: 'Screenshots, counted and marked private',
+    body: 'Every frame is numbered, labelled 私有, and counted against a visible budget. Re-uploading the same bytes costs nothing — the hash catches it.',
+  },
+  {
+    file: '63-zh-xhs-review-map.jpg',
+    title: 'The review is on the map',
+    body: 'Places found in the text and in the pictures, plotted as they are reviewed. Each card says what it is, where it is, and 识别来源 — the sentence or the frame numbers it came from.',
+  },
+  {
+    file: '64-zh-xhs-unassigned-tray.jpg',
+    title: '未分配图片',
+    body: 'Image analysis will never be right every time, so whatever could not be attributed stays visible and actionable instead of disappearing.',
+  },
+  {
+    file: '65-zh-xhs-image-assign.jpg',
+    title: 'Assigning pictures to a place, by hand',
+    body: 'The core requirement, as an interaction rather than a promise. An image belongs to one place; moving it moves it. This works with no model at all, which is what keeps the feature usable on a static deployment.',
+  },
+  {
+    file: '66-zh-xhs-saved-private-images.jpg',
+    title: 'Two galleries, two meanings',
+    body: 'The saved place shows its canonical photography, and under its own heading the traveller imported pictures. Merging them would be the easiest way to lose the distinction that matters most.',
+  },
+  {
+    file: '67-zh-xhs-fallback.jpg',
+    title: 'No retrieval, no dead end',
+    body: 'With no approved provider the honest answer arrives immediately, and the two things that still work are offered underneath.',
+  },
+  {
+    file: '68-zh-xhs-mobile-review.jpg',
+    title: 'Xiaohongshu import on a phone',
+    body: 'The sheet expands for the review, the map above it keeps showing the candidate a card refers to, and the image picker is thumb-sized for touch.',
+  },
+  {
     file: '50-zh-import-input.jpg',
     title: '导入攻略 — paste a link or the text',
     body: 'The limitation is stated where the traveller would otherwise expect us to fetch the link, and the link is kept as provenance either way.',
@@ -203,7 +248,9 @@ const STACK = [
   ['Tiles', 'CARTO vector tiles, with OpenFreeMap as an automatic fallback'],
   ['Routing', 'OSRM road geometry, with a documented geodesic estimator as fallback'],
   ['State', 'Zustand + localStorage, manual hydration'],
-  ['Guide extraction', 'Provider interface — deterministic rule-based by default, LLM behind a server route'],
+  ['Guide analysis', 'One GuideAnalyzer interface — rule-based text by default, multimodal (text + images) behind a server route'],
+  ['Place resolution', 'Meridian dataset → alias table → field-masked external place search → manual map pin'],
+  ['Imported images', 'IndexedDB, three sizes for three jobs, SHA-256 dedupe, private_import by construction'],
   ['Styling', 'Tailwind with CSS custom properties as design tokens'],
   ['Runtime dependencies', 'maplibre-gl, next, react, react-dom, zustand — five'],
 ];
@@ -228,6 +275,22 @@ const DECISIONS: Array<[string, string]> = [
   [
     'Honest confidence on every coordinate',
     'Each record carries verified / approximate / demo plus a note describing what the point marks. 5 of 119 places are approximate and are drawn with a visible badge.',
+  ],
+  [
+    'One platform, enforced by the type system',
+    'SocialPlatform used to be a nine-value union, and every surface carried conditionals for sources nobody had tested. It is now a one-value union: adding a second source becomes a deliberate change to the union, a provider and a copy pass, rather than something that arrives by accident because a union already permitted it. A link to another platform is refused by name.',
+  ],
+  [
+    'A model never supplies a coordinate',
+    'Stated in the system prompt, absent from the pipeline types, and visible in the UI. A model that has never seen Bali cannot place a beach club, and a plausible-looking wrong latitude is the most damaging thing this feature could emit — the router would route to a stop that does not exist and the traveller would find out in a car. Position comes from Meridian data, an external search the traveller confirms, or the traveller own finger.',
+  ],
+  [
+    'An external hit is a question, not an answer',
+    'When Meridian holds nothing, an external place search may find something with the same name. Confirming it saves a place the traveller OWNS, pending review — because "a map search found this name" and "Meridian knows this place" are different claims, and the record has to say which one it is.',
+  ],
+  [
+    'One function can create an image, and it cannot make it public',
+    'buildImageRecord has no parameter for visibility: an imported picture is private_import, always. There is no code path that promotes a creator work to canonical photography, which is a stronger guarantee than a policy statement — and a saved place shows the two galleries under separate headings.',
   ],
   [
     'The import flow takes the panel, not a dialog',
@@ -256,6 +319,18 @@ const DECISIONS: Array<[string, string]> = [
 ];
 
 const BUGS: Array<[string, string]> = [
+  [
+    'A model prompt is not a mask',
+    'The test guarding the Places field mask was asserting on the COMMENT that lists the fields it does not request. Rewriting it to read the actual mask is the difference between testing the behaviour and testing the prose around it. The same mistake appeared twice more: a "no scraping" assertion that failed on the comment saying we do not solve CAPTCHAs, and a "no secrets in the client" assertion that failed on a comment naming a key it never reads.',
+  ],
+  [
+    'A draft import was rejected as empty',
+    'Adding screenshots to an empty form called the input validator with no url and no text, which returned "please paste a link or text" — to somebody who had just uploaded six screenshots. The first upload silently failed. The manual import mode is explicitly link-optional, text-optional, images-allowed, and the validator did not know that.',
+  ],
+  [
+    'Reassigning an image left it attached to two places',
+    'The assignment rows were filtered correctly, but the old candidate kept the image in its own assignedImageIds, so the picture rendered under both cards and the unassigned count was wrong. Found by a test written for exactly that behaviour.',
+  ],
   [
     'Every mention inherited the whole paragraph’s themes',
     'La Brisa was classified as a temple and credited with a sunset it never had, because the extractor classified a sentence using its parent line. Segmenting to the sentence fixed the attribution — and immediately revealed that “第二天在长谷吃了 Milk & Madu” no longer matched at all, since the restaurant was named without a restaurant word. A visit-verb gate restored it.',
@@ -432,58 +507,80 @@ export default function ProcessPage() {
           </p>
         </Section>
 
-        <Section title="Turning a guide into places on a map">
+        <Section title="Xiaohongshu import: text, pictures, real coordinates">
           <p>
-            The core product moment of this iteration is one sentence long:{' '}
-            <strong>paste a travel guide, and its places appear on my map.</strong> Everything below
-            exists to make that true without inventing anything along the way.
+            The product narrowed to one source so it could get one workflow right. The previous pass
+            accepted nine platforms and read only pasted text, which looked like breadth and behaved
+            like hedging: extraction, layout and copy all carried conditionals for sources nobody had
+            tried, and the source most of this product&rsquo;s readers actually use sat behind a generic
+            paste box. V1 now reads <strong>Xiaohongshu only</strong> — link, text and images.
           </p>
           <p>
-            <strong>Meridian does not scrape.</strong> Xiaohongshu, Douyin, TikTok and Instagram
-            prohibit automated collection, and a scraper would break monthly, put a traveller’s own
-            account at risk and still fail on the screenshot that most guides actually are. So the
-            link is kept as provenance and never fetched, and the text is what the traveller pastes.
-            That limitation is stated in the interface, in words, exactly where a traveller would
-            otherwise expect us to read the link: 暂时无法直接读取这个平台的内容。
+            <strong>One platform, enforced by the type system.</strong> The platform union has a
+            single value. A nine-value union is a standing invitation for a second workflow to arrive
+            by accident; a one-value union makes the next source a deliberate change to the union, a
+            provider and a copy pass. A link to another platform is refused <em>by name</em>, with the
+            reason on screen, rather than silently accepted and failing later.
           </p>
           <p>
-            <strong>Extraction is a provider, not a vendor.</strong> A <code>GuideExtractor</code>{' '}
-            interface has two implementations. The deterministic rule-based extractor runs in the
-            browser, needs no key and costs nothing, and is the default so the feature is
-            demonstrable offline. The LLM extractor posts to <code>/api/extract</code> — an internal
-            route, and the only place <code>DEEPSEEK_API_KEY</code> or{' '}
-            <code>OPENAI_API_KEY</code> is read. The browser calls our route and never holds a
-            credential; the static build has no server, so the route is not deployed and the
-            deterministic extractor simply runs. The feature degrades rather than breaking, and a
-            key in the environment cannot silently become a key in a JavaScript bundle.
+            <strong>Meridian does not scrape.</strong> No login, no session, no CAPTCHA or signature
+            solving, no rotated user agents or proxies, no headless browser, no private content. When a
+            retrieval provider is configured it makes one polite request; a 403 is the end of the
+            attempt rather than the start of a workaround, and it is not retried. With no provider
+            configured — every deployment today — the honest answer arrives immediately and the two
+            things that still work are offered underneath: paste the text, or upload the screenshots.
           </p>
           <p>
-            <strong>Matching refuses to guess.</strong> Names are compared on a loose key (noise
-            words stripped) and a strict key (punctuation and accents only), because stripping noise
-            destroys names that legitimately contain a region word — Uluwatu Temple among them. Two
-            candidates within 0.05 of each other are treated as ambiguous and matched to neither.
-            Above the floor the interface speaks in bands: a high-confidence match is preselected, a
-            medium one asks, and a low one is reported as unmatched. No score is ever rendered.
+            <strong>Pictures are evidence, not decoration.</strong> A{' '}
+            <code>GuideAnalyzer</code> interface has two implementations: a rule-based analyzer that
+            reads the text for free, and a multimodal one that posts the text plus downscaled images to{' '}
+            <code>/api/analyze-guide</code> — the only place a vision key is read. Both return the same
+            shape, so the merge step, the resolution pipeline and the review screen cannot tell which
+            produced their input. The offline analyzer is deliberately not a cheap imitation of vision:
+            it marks images <code>unsupported</code> and hands the traveller the assignment UI, because
+            an analyzer that manufactured findings would be worse than one that admits it is blind.
           </p>
           <p>
-            <strong>The guide’s words stay the guide’s words.</strong> Themes, dishes, warnings and
-            times are shown as source-derived, under a line that says so: 以下内容来自攻略，不是
-            Meridian 核实过的事实。 A guide saying a beach club is crowded on weekends is useful; it
-            is not a verified attribute of the place, and the interface never dresses it as one.
+            <strong>A model never supplies a coordinate.</strong> This is stated in the system prompt,
+            absent from the pipeline&rsquo;s types, and visible in the interface — because it is the only
+            failure of this feature that is actively dangerous. A model that has never seen Bali cannot
+            know where a beach club is, and a plausible-looking latitude would silently corrupt an
+            itinerary with a stop that does not exist. Position comes from exactly four places, in
+            order: Meridian&rsquo;s dataset, the alias table this profile confirmed, an external place
+            search, and then the traveller&rsquo;s own finger on the map.
           </p>
           <p>
-            <strong>A new place is a submission, not a place.</strong> When the dataset does not hold
-            what the guide named, the traveller can place it on the map by hand — which writes a{' '}
-            <code>UserPlaceSubmission</code> in <code>pending_verification</code>, private to its
-            creator and never written into the canonical registry. It appears in 我的收藏 in its own
-            visual register, labelled 待核实, and is never given the card a verified place gets.
+            <strong>An external hit is a question, not an answer.</strong> When Meridian holds nothing,
+            a place search may find something with the same name. It is offered, never auto-accepted,
+            and confirming it saves a place the traveller <em>owns</em>, pending review — because
+            &ldquo;a map search found this name&rdquo; and &ldquo;Meridian knows this place&rdquo; are different
+            claims and the record has to say which one it is. The lookup is field-masked to id, name,
+            address, location and type, so a rating, a photo or an opening hour can never be requested,
+            and it runs only after Meridian fails.
+          </p>
+          <p>
+            <strong>Assignment is a first-class interaction.</strong> Image analysis will never be
+            right every time, so the design assumes it will be wrong. Every assignment carries an
+            author — <code>suggested</code> or <code>user</code> — and a re-analysis only ever replaces
+            suggestions, so a human correction outlives it. Reassigning a picture moves it rather than
+            copying it. And a low-confidence image-only reading is not turned into a place at all: the
+            picture goes to the <strong>未分配图片</strong> tray, where it reads as a question rather
+            than as an answer with a pin on it.
+          </p>
+          <p>
+            <strong>One function can create an image, and it cannot make it public.</strong> An
+            imported picture is <code>private_import</code>, written by a builder with no parameter for
+            visibility. There is no code path that promotes a creator&rsquo;s work to canonical
+            photography, which is a stronger guarantee than a policy statement — and a saved place
+            shows the two galleries under separate headings: the licensed photograph, and{' '}
+            来自你的攻略（只有你能看到）.
           </p>
           <p className="text-muted">
-            Signals are aggregates over the traveller’s own saved mentions, and the two corpora —
-            你的攻略 and 社区攻略 — are rendered separately and never summed. What it says is “在 N 份
-            已收录攻略中被提及”, which is a claim about our own corpus and is checkable. There is no
-            popularity ranking anywhere in the product, and a fresh install shows no signals at all
-            because there is nothing imported to show.
+            Cost is bounded on both axes. Images are re-encoded client-side into three sizes for three
+            jobs, deduplicated by hash, and capped at twenty per guide; analyses are cached by content
+            hash and version; and the external lookup is off unless a provider is configured, because a
+            request guaranteed to 404 is noise rather than information. The two switches that decide
+            whether to spend money both default to off.
           </p>
         </Section>
 

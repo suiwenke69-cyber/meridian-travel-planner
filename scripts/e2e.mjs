@@ -16,6 +16,7 @@
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { deflateSync } from 'node:zlib';
 import { join } from 'node:path';
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3000';
@@ -84,6 +85,58 @@ async function chooseOrigin(page, id) {
     await page.waitForTimeout(500);
   }
   await page.locator(`[data-testid="origin-trigger-option-${id}"]`).click();
+}
+
+
+/**
+ * A real PNG, generated rather than committed as a fixture.
+ *
+ * The upload path runs the bytes through a canvas — downscale, re-encode, hash —
+ * so a fake buffer would fail at decode and quietly test nothing. This builds a
+ * genuinely valid image with zlib, which is a few lines and no binary in git.
+ */
+function makePng(size = 64) {
+  const raw = Buffer.alloc((size * 3 + 1) * size);
+  for (let y = 0; y < size; y += 1) {
+    const row = y * (size * 3 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < size; x += 1) {
+      const px = row + 1 + x * 3;
+      raw[px] = 30 + x * 3;
+      raw[px + 1] = 120;
+      raw[px + 2] = 200 - y * 2;
+    }
+  }
+  const crcTable = [];
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c >>> 0;
+  }
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 async function step(name, fn) {
@@ -848,8 +901,8 @@ await step('22. The internal research view imports a guide and extracts places',
   check('the queue names its states in words, not scores', /已匹配|可能|未找到/.test(queueText));
   check('no confidence number or percentage is rendered', !/\b0\.\d{2}\b|\d{1,3}%/.test(queueText));
 
-  const mentionRows = page.locator('[data-testid^="research-mention-"]');
-  check('places are extracted from the pasted text', (await mentionRows.count()) >= 3, `${await mentionRows.count()} mentions`);
+  const candidateRows = page.locator('[data-testid^="research-candidate-"]');
+  check('places are extracted from the pasted text', (await candidateRows.count()) >= 3, `${await candidateRows.count()} candidates`);
 
   // Nothing is published until a human says so.
   const save = page.locator('[data-testid^="research-save-"]').first();
@@ -891,49 +944,85 @@ await step('23. A saved place reaches the traveller as an aggregate signal, not 
 // This iteration: social guide import, in the traveller's own hands.
 // ---------------------------------------------------------------------------
 
-await step('23b. A traveller imports a guide and its places appear on the map', async () => {
+await step('23b. A traveller imports a Xiaohongshu guide — text AND images — onto the map', async () => {
   await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   await page.waitForSelector('[data-testid="import-guide-entry"]', { timeout: 120_000 });
   await page.waitForTimeout(8000);
 
-  check('the import entry is reachable from the destination', (await page.locator('[data-testid="import-guide-entry"]').count()) === 1);
-
   await page.locator('[data-testid="import-guide-entry"]').click();
   await page.waitForSelector('[data-testid="import-panel"][data-step="input"]', { timeout: 30_000 });
 
-  // §5: the limitation is stated in words, where the traveller would expect us
+  // §2: the limitation is stated in words, where the traveller would expect us
   // to fetch the link.
   const inputText = await page.locator('[data-testid="import-panel"]').innerText();
   check('the platform limitation is explained up front', /暂时无法直接读取这个平台的内容/.test(inputText));
   check('scraping is disclaimed explicitly', /不会抓取这些平台的内容/.test(inputText));
+  check('the import screen names Xiaohongshu', /小红书/.test(inputText));
 
-  await page.locator('[data-testid="import-url"]').fill('https://www.xiaohongshu.com/explore/e2e-import');
+  // §1: a link to another platform is refused by name, not silently accepted.
+  await page.locator('[data-testid="import-url"]').fill('https://www.tiktok.com/@someone/video/123');
+  await page.waitForTimeout(400);
+  check('a non-Xiaohongshu link is called out', (await page.locator('[data-testid="import-url-foreign"]').count()) === 1);
+  check('the refusal names the platform limit', /只支持小红书/.test(await page.locator('[data-testid="import-url-foreign"]').innerText()));
+
+  await page.locator('[data-testid="import-url"]').fill('https://www.xiaohongshu.com/explore/65f0a1b2c3d4e5f6a7b8c9d0');
+  await page.waitForTimeout(300);
+  check('a Xiaohongshu link is recognised', (await page.locator('[data-testid="import-url-foreign"]').count()) === 0);
+
+  // --- §4, §28: the traveller supplies the pictures themselves --------------
+  await page.locator('[data-testid="import-file-input"]').setInputFiles([
+    { name: 'shot-1.png', mimeType: 'image/png', buffer: makePng(64) },
+    { name: 'shot-2.png', mimeType: 'image/png', buffer: makePng(96) },
+    { name: 'shot-3.png', mimeType: 'image/png', buffer: makePng(48) },
+  ]);
+  await page.waitForTimeout(4000);
+
+  const budget = await page.locator('[data-testid="import-image-budget"]').innerText();
+  check('uploaded images are counted against the budget', /3\s*\/\s*20/.test(budget), budget);
+  const thumbs = await page.locator('[data-testid="import-dropzone"] [data-testid^="import-image-img-"]').count();
+  check('uploaded images render as numbered thumbnails', thumbs === 3, `${thumbs}`);
+  check(
+    'every imported image is labelled private',
+    /私有/.test(await page.locator('[data-testid="import-dropzone"]').innerText()),
+  );
+
+  // The same bytes twice must not be stored twice (§30).
+  await page.locator('[data-testid="import-file-input"]').setInputFiles([
+    { name: 'shot-1-again.png', mimeType: 'image/png', buffer: makePng(64) },
+  ]);
+  await page.waitForTimeout(3000);
+  const afterDuplicate = await page.locator('[data-testid="import-dropzone"] [data-testid^="import-image-img-"]').count();
+  check('re-uploading the same image is deduplicated', afterDuplicate === 3, `${afterDuplicate}`);
+
   await page.locator('[data-testid="import-text"]').fill(
     '巴厘岛第三天我们去了乌鲁瓦图神庙，建议下午四点多到，然后去附近看日落。晚上去了 La Brisa，氛围很好但周末人特别多，必点：烤章鱼。',
   );
   await page.waitForTimeout(400);
   await page.locator('[data-testid="import-start"]').click();
 
-  await page.waitForSelector('[data-testid="import-panel"][data-step="review"]', { timeout: 60_000 });
+  await page.waitForSelector('[data-testid="import-panel"][data-step="review"]', { timeout: 90_000 });
   await page.waitForTimeout(3500);
 
   const foundText = await page.locator('[data-testid="import-found-count"]').innerText();
   check('the review states how many places were found', /\d+/.test(foundText), foundText);
-  check('the review names how many matched', (await page.locator('[data-testid="import-matched-count"]').count()) === 1);
+  check('the review is the Xiaohongshu wording', /从这篇攻略中发现/.test(foundText), foundText);
+  check('the review names how many found a map location', (await page.locator('[data-testid="import-located-count"]').count()) === 1);
+  check('the review reports how many images were read', /已读 \d+ 张图片/.test(await page.locator('[data-testid="import-panel"]').innerText()));
 
   const reviewText = await page.locator('[data-testid="import-panel"]').innerText();
   check('the guide words are labelled as the guide, not as fact', /以下内容来自攻略/.test(reviewText));
   check('no confidence number reaches the traveller', !/\b0\.\d{2}\b|\d{1,3}%/.test(reviewText));
 
-  const cards = page.locator('[data-testid^="import-mention-"]');
+  const cards = page.locator('[data-testid^="import-candidate-"]').filter({ has: page.locator('[data-testid^="import-candidate-name-"]') });
   const cardCount = await cards.count();
   check('candidates render as cards', cardCount >= 2, `${cardCount} cards`);
 
+  // §9: every card says WHY it exists.
+  const sourceLines = await page.locator('[data-testid^="import-candidate-source-"]').allInnerTexts();
+  check('every candidate states its detection source', sourceLines.length === cardCount && sourceLines.every((line) => /识别来源/.test(line)), sourceLines.join(' | '));
+  check('the provenance names the frame numbers', sourceLines.some((line) => /图片/.test(line)) || sourceLines.every((line) => /正文|你的标注/.test(line)));
+
   // The promise: the candidates are ON THE MAP.
-  //
-  // Markers are DOM elements here, not a style layer, so this counts what the
-  // traveller can actually see. Reviewing on a map with nothing on it was the
-  // first version's bug — the preview was scoped to the DO tab.
   await page.waitForTimeout(2500);
   const plotted = await page.locator('.maplibregl-marker').count();
   check('the candidates are drawn on the map during review', plotted >= 1, `${plotted} markers`);
@@ -941,7 +1030,57 @@ await step('23b. A traveller imports a guide and its places appear on the map', 
 
   await page.screenshot({ path: join(ARTIFACTS, '23b-zh-import-review.png') });
 
-  // Save what is ticked.
+  // --- §16, §17: the unassigned tray and manual assignment -----------------
+  const tray = page.locator('[data-testid="import-unassigned"]');
+  check('the unassigned image tray is present', (await tray.count()) === 1);
+  if (await tray.count()) {
+    const trayText = await tray.innerText();
+    check('the tray says how many images are unplaced', /还有 \d+ 张图片没有关联地点/.test(trayText), trayText.slice(0, 60));
+    const trayImages = tray.locator('[data-testid^="import-image-img-"]');
+    const trayCount = await trayImages.count();
+    check('the tray shows the unplaced images', trayCount >= 1, `${trayCount}`);
+
+    // §18: tapping an unplaced image asks what it is.
+    await trayImages.first().click();
+    await page.waitForTimeout(700);
+    const question = page.locator('[data-testid^="import-question-"]');
+    check('tapping an unplaced image asks what it is', (await question.count()) >= 1);
+    check('the question offers attaching it to a known place', /挂到这个地点|Attach to/.test(await question.first().innerText()));
+    await page.screenshot({ path: join(ARTIFACTS, '23b2-zh-image-question.png') });
+    await page.keyboard.press('Escape').catch(() => {});
+    const dismiss = question.first().locator('button[aria-label]').last();
+    await dismiss.click().catch(() => {});
+    await page.waitForTimeout(500);
+  }
+
+  // Manual assignment through the card's own affordance (§16, the core ask).
+  const firstCard = cards.first();
+  const cardId = (await firstCard.getAttribute('data-testid')).replace('import-candidate-', '');
+  await page.locator(`[data-testid="import-candidate-addimage-${cardId}"]`).click();
+  await page.waitForTimeout(700);
+  const assignPanel = page.locator(`[data-testid="import-assign-${cardId}"]`);
+  check('the image picker opens for a place', (await assignPanel.count()) === 1);
+  check('the picker explains one image belongs to one place', /一张图只会属于一个地点/.test(await assignPanel.innerText()));
+  await page.screenshot({ path: join(ARTIFACTS, '23b3-zh-image-assign.png') });
+
+  const pickable = assignPanel.locator('[data-testid^="import-image-img-"]');
+  const pickCount = await pickable.count();
+  check('the picker lists every image in the import', pickCount === 3, `${pickCount}`);
+  await pickable.first().click();
+  await pickable.nth(1).click();
+  await page.waitForTimeout(300);
+  await page.locator(`[data-testid="import-assign-apply-${cardId}"]`).click();
+  await page.waitForTimeout(1200);
+
+  check(
+    'the assignment is reflected on the card',
+    (await page.locator(`[data-testid="import-candidate-${cardId}"] [data-testid^="import-image-img-"]`).count()) >= 1,
+  );
+
+  const trayAfter = await page.locator('[data-testid="import-unassigned"] [data-testid^="import-image-img-"]').count();
+  check('assigning images shrinks the unassigned tray', trayAfter < 3, `${trayAfter} left`);
+
+  // --- save --------------------------------------------------------------
   const saveButton = page.locator('[data-testid="import-save"]');
   check('a save action is offered with a count', /保存 \d+ 个地点/.test(await saveButton.innerText()), await saveButton.innerText());
   await saveButton.click();
@@ -959,8 +1098,7 @@ await step('23b. A traveller imports a guide and its places appear on the map', 
    * The honesty rule, stated precisely.
    *
    * `不代表全网热度` is the CAVEAT and must be allowed; what is banned is a
-   * popularity claim presented as fact. Asserting on the bare word 全网 would
-   * fail the very sentence that makes the feature honest.
+   * popularity claim presented as fact.
    */
   check(
     'provenance is a corpus count, not a popularity claim',
@@ -968,7 +1106,19 @@ await step('23b. A traveller imports a guide and its places appear on the map', 
     savedText.replace(/\s+/g, ' ').slice(0, 120),
   );
 
-  await page.waitForTimeout(2500);
+  /*
+   * §23's boundary, which is the whole point of keeping the two galleries apart:
+   * the traveller's own imported pictures are shown under their own heading, and
+   * are never merged into the place's canonical photography.
+   */
+  const savedImages = page.locator('[data-testid^="saved-images-"]');
+  check('the saved place keeps the traveller\'s own pictures', (await savedImages.count()) >= 1);
+  if (await savedImages.count()) {
+    check('they are labelled as coming from the traveller\'s guide', /来自你的攻略/.test(await savedImages.first().innerText()));
+    check('they are marked private', /私有/.test(await savedImages.first().innerText()));
+  }
+
+  await page.waitForTimeout(2000);
   const savedMarkers = await page.locator('.maplibregl-marker').count();
   check('the saved places appear on the map', savedMarkers >= 1, `${savedMarkers} markers`);
 
@@ -977,8 +1127,49 @@ await step('23b. A traveller imports a guide and its places appear on the map', 
   // The scope toggle keeps 我的收藏 separate from the whole catalogue.
   await page.locator('[data-testid="do-scope-all"]').click();
   await page.waitForTimeout(2500);
-  const allText = await page.locator('[data-testid="do-categories"]').isVisible();
-  check('the catalogue scope is still there', allText);
+  check('the catalogue scope is still there', await page.locator('[data-testid="do-categories"]').isVisible());
+});
+
+await step('23b2. An imported place goes into the itinerary and keeps its transport', async () => {
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(7000);
+
+  // Start a trip if this browser has none.
+  await page.locator('[data-testid="dest-tab-plan"]').click();
+  await page.waitForTimeout(2500);
+  if (await page.locator('[data-testid="arrival-date"]').count()) {
+    await page.locator('[data-testid="arrival-date"]').fill('2026-06-01');
+    await page.locator('[data-testid="departure-date"]').fill('2026-06-04');
+    await page.locator('[data-testid="create-trip"]').click();
+    await page.waitForTimeout(2500);
+  }
+
+  // 我的收藏 → add the imported place to the trip.
+  await page.locator('[data-testid="dest-tab-do"]').click();
+  await page.waitForTimeout(1500);
+  await page.locator('[data-testid="do-scope-saved"]').click();
+  await page.waitForSelector('[data-testid="saved-list"]', { timeout: 30_000 });
+  await page.waitForTimeout(3000);
+
+  /*
+   * A canonical saved place renders the shared AddToTripButton, whose label
+   * changes with state (`加入行程` before a day is chosen, `加入第 N 天` after).
+   * Matching on the exact string made this pass or fail depending on whether an
+   * earlier step had selected a day.
+   */
+  const anyAdd = page
+    .locator('[data-testid="saved-list"]')
+    .getByRole('button', { name: /加入/ })
+    .filter({ hasNotText: /先建行程/ })
+    .first();
+  check('a saved place offers adding to the trip', (await anyAdd.count()) >= 1);
+  if (await anyAdd.count()) {
+    await anyAdd.click();
+    await page.waitForTimeout(2500);
+    const planText = await page.locator('[data-testid="dest-tab-plan"]').count();
+    check('adding it moves the traveller to the itinerary', planText >= 1);
+  }
 });
 
 await step('23c. An unreadable link fails with a specific, honest message', async () => {

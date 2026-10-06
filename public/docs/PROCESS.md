@@ -1158,3 +1158,241 @@ passes — the panel was still visibly broken while every assertion about its co
    made from this repository, so the prompt's output shape is verified only against its own contract.
 6. **Saved places are per-browser.** Like trips and the origin, they live in `localStorage`. Moving to
    accounts replaces the persist middleware, not the components.
+
+---
+
+# Iteration 7 — narrowing to Xiaohongshu, and reading pictures
+
+## 1. Why narrowing was the hard part
+
+The previous pass shipped an import flow that accepted nine platforms and read
+only pasted text. It looked like breadth and it behaved like hedging. Every
+surface — extraction, layout, copy, tests — carried conditionals for sources
+nobody had tried, and the source most of this product's actual readers use sat
+behind a generic paste box.
+
+So this iteration deleted most of it. `SocialPlatform` is now a one-value union:
+
+```ts
+export type SocialPlatform = 'xiaohongshu';
+```
+
+That looks like a joke and is the point. A nine-value union is a standing
+invitation for a second platform to arrive by accident — a selector here, a
+branch there, and suddenly two half-tested workflows. A one-value union makes the
+next platform a deliberate change to three files, and it makes the compiler
+refuse to let anything slip through. Every generic platform selector is gone; a
+TikTok link is now refused *by name*, with the reason on screen:
+
+> 这看起来不是小红书链接。V1 只支持小红书，请换成小红书链接，或直接粘贴正文和图片。
+
+## 2. Reading pictures without pretending to see
+
+The product promise became: paste a Xiaohongshu post and Meridian finds its places
+from **the text and the images**. Xiaohongshu guides are image-first — a name on a
+shopfront is as good evidence as a name in a sentence — and treating the pictures
+as decoration was the previous version's central mistake.
+
+`lib/research/analyzer.ts` defines one `GuideAnalyzer` interface and two
+implementations, because vision is the one part of this feature that costs money
+per call, cannot run offline, and changes vendor annually:
+
+| Analyzer | Where | Key | Behaviour |
+| --- | --- | --- | --- |
+| `heuristic` (default) | browser | none | Reads the text. Cannot see, and says so. |
+| `multimodal` | server, `/api/analyze-guide` | yes | Text plus downscaled images, four per call |
+
+Both return the same shape, so the merge step, the resolution pipeline and the
+review screen cannot tell which produced their input. A deployment that gains a
+key gains image understanding and nothing else changes.
+
+The heuristic analyzer is deliberately **not** a cheap imitation of vision. It
+does not guess at a place from a filename or a caption the traveller never wrote;
+it marks images `unsupported` and hands the traveller the assignment UI. An
+analyzer that manufactured findings would be worse than one that admits it is
+blind, because the traveller cannot tell the difference from the card.
+
+## 3. The one thing a model may never do
+
+**No coordinates. Ever.**
+
+This is stated three times — in the system prompt, in the pipeline's types, and in
+the review UI — because it is the only failure of this feature that is actively
+dangerous. A model that has never seen Bali cannot know where a beach club is. A
+plausible-looking latitude would silently corrupt an itinerary with a stop that
+does not exist, and nothing downstream would catch it: the router would route to
+it, the timeline would show it, and the traveller would discover it in a car.
+
+So position comes from exactly four places, in order:
+
+1. **Meridian's dataset** — curated, photographed, verified.
+2. **The alias table** — a name this profile already confirmed.
+3. **An external place search** — somebody else's map knows it.
+4. **The traveller** — they point at the map.
+
+Each step is strictly more expensive and less trustworthy than the one before,
+which is what makes the order correct rather than merely convenient. A step-3 hit
+is offered as a question, never written onto the map, and confirming it saves a
+place the traveller *owns*, pending review — because "a map search found something
+with this name" and "Meridian knows this place" are different claims and the
+record has to say which one it is.
+
+The prompt's other two absolute rules exist for the same reason. No invented
+attributes (ratings, prices, hours): the guide's words are the guide's words, and
+the card says so underneath them. And every finding must declare where it came
+from — `detectedFromText`, `detectedFromImageIds` — because
+"识别来源：正文 + 图片 3、4" is what lets a traveller judge a card instead of
+trusting it.
+
+## 4. The unassigned tray, and why imperfect analysis is survivable
+
+§26 and §17 are the parts of this brief that make the rest honest. Image
+understanding is probabilistic, so the design has to assume it will be wrong
+sometimes.
+
+Two mechanisms:
+
+**A low-confidence image-only finding is not a place candidate.** Below
+`IMAGE_PROPOSAL_FLOOR` it is dropped from the review list entirely and the image
+lands in the **未分配图片** tray instead. A card that says "La Brisa" with a map
+pin on it reads as an answer; a picture in a tray reads as a question, which is
+what a blurry sign actually is.
+
+**Every assignment is a record with an author.** `ImagePlaceAssignment.source` is
+either `suggested` or `user`, and a re-analysis only ever replaces `suggested`
+rows. §33's worked example — "AI: image 4 is Finns. User: image 4 is La Brisa." —
+is therefore enforced by the data shape rather than by a convention, and the
+admin view has an audit section that shows which rows came from which.
+
+Reassigning an image *moves* it rather than copying it. One image belongs to one
+place, because "this photo also belongs to that other place" is almost never what
+somebody means, and a photo attached to two cards makes the unassigned count lie.
+
+## 5. The copyright boundary, in one function
+
+An imported image and Meridian's canonical photography are different things and
+must never be confused. One is licensed, attributed, and provably of its subject.
+The other is a creator's work that a traveller happens to have in their own guide,
+and it was never offered to us.
+
+So there is exactly one function that can create an image record, and it has no
+parameter for visibility:
+
+```ts
+export function buildImageRecord(input: {...}): ImportImage {
+  return {
+    ...
+    visibility: 'private_import',
+  };
+}
+```
+
+`user_contributed` exists in the type for §21's future flow — a traveller offering
+their *own* photograph with explicit consent — and is unreachable from every
+import path. There is no code path that promotes an imported picture to public
+photography, which is a stronger guarantee than a policy statement.
+
+The boundary is also visible in the product. A saved place shows its canonical
+photography, and underneath it, under its own heading:
+
+> **来自你的攻略（只有你能看到）**
+
+Two headings, two meanings. Merging them into one gallery would be the single
+easiest way to lose the distinction that matters most.
+
+## 6. Cost control, on both axes
+
+Imported images are expensive in every dimension at once: browser memory,
+IndexedDB quota, phone upload time, and tokens. None of that is visible to someone
+who drags in thirty screenshots, so it is bounded in `lib/research/image-rules.ts`
+— a file of pure functions, which is the only reason the arithmetic is testable
+without a browser.
+
+**Storage.** Three sizes for three jobs, and they are not copies: a 320px
+thumbnail for lists (a review screen with twenty cards must not decode twenty
+1600px bitmaps), a 1600px version to look at, and a 1024px payload generated on
+demand and never persisted, sized so signage still survives the downscale.
+Everything is re-encoded client-side before it is stored. A SHA-256 of the stored
+bytes dedupes a screenshot uploaded twice.
+
+**Calls.** Images are batched four at a time, which cuts request overhead *and*
+lets the model relate a sequence — storefront, then the plate, then the sign —
+which is exactly the signal §6 wants and a per-image call cannot see. Analyses are
+cached by content hash and version. And the external place search runs only after
+Meridian fails, only when a provider is configured, with a field mask that can
+never request a rating, a photo, an opening hour, a review or a price level.
+
+`NEXT_PUBLIC_PLACE_PROVIDER` and `NEXT_PUBLIC_XHS_RETRIEVAL` both default to
+**off**. That is a cost decision and a noise decision at once: on a static
+deployment the routes are not there, so making the call produces a 404 logged in
+every visitor's console and teaches nobody anything. The honest fallback shows
+immediately instead.
+
+## 7. Bugs this pass surfaced
+
+**A draft import was rejected as empty.** Adding pictures to an empty form called
+`checkImportInput({ url: undefined, text: undefined })`, which returned
+`empty_input` — so the first screenshot silently failed to upload and the form
+said "请粘贴链接或攻略文字" to somebody who had just uploaded six screenshots.
+§28's manual mode is explicitly "链接 optional, 正文 optional, 上传图片", and the
+validator did not know that. It now takes an `imageCount`.
+
+**Reassigning an image left it attached to two places.** `assignImage` filtered
+the assignment rows but only ever *added* to the new candidate's
+`assignedImageIds`; the old candidate kept the image in its own list, so the
+picture rendered under both cards and the unassigned count was wrong. Found by a
+test asserting exactly the §33 behaviour it was written for.
+
+**A model prompt is not a mask.** The Places route's field mask is a literal
+string, and the test that guarded cost control was asserting on the *comment*
+listing the fields it does not request. Rewriting it to read the actual mask is
+the difference between testing the behaviour and testing the prose around it. The
+same mistake appeared twice more — a "no scraping" assertion that failed on the
+comment saying "we do not solve CAPTCHAs", and a "no secrets in the client"
+assertion that failed on a comment naming the key it does not read.
+
+## 8. Verification
+
+- `npx tsc --noEmit` — clean.
+- `npm run validate:data` — passes.
+- `npm run test:social` — **224/224**. Chinese, English and mixed prose;
+  ambiguity; alias learning; the four-step resolution pipeline and its cache; the
+  external-provider branch, both gated and primed; text/image merging including
+  §24's worked example; image assignment, reassignment and the tray; saving with
+  image references; pinning; creating from an image; the private-by-default
+  boundary; the cost arithmetic; every failure code; the retrieval route's refusal
+  semantics. Plus an assertion that no browser-side module reads a secret, made by
+  reading the sources.
+- `npm run test:e2e` — **172/172**, zero console errors, page errors or failed
+  requests. New coverage: the platform refusal, three real generated PNGs uploaded
+  and deduplicated, the review, the candidates plotted on the map, the unassigned
+  tray, the image question, manual assignment changing both the card and the tray,
+  saving, and the saved place keeping the traveller's pictures under their own
+  heading.
+- `scripts/shots-xhs.mjs` — the same flow at 1440×900 and 390×844, inspected by
+  hand rather than asserted. Zero console errors.
+- `npm run build` and `npm run build:static` — both pass; `app/api` is stashed for
+  the static export and restored, so no route handler ships to GitHub Pages.
+
+## Known limitations after this pass
+
+1. **Nothing is actually retrieved from Xiaohongshu.** The route, its refusal
+   semantics and the image relay all exist and are tested, but no approved
+   retrieval provider is configured anywhere. The product's answer to a pasted
+   link is the honest fallback, which is a complete workflow rather than a
+   degraded one — and it is not what §2 asks for at full strength.
+2. **Multimodal analysis has never run against a real key.** The prompt, the
+   batching, the response contract and the merge are implemented and tested
+   against their own contract; nobody has sent a real Balinese menu photograph to
+   a real vision model and looked at what came back.
+3. **`IMAGE_PROPOSAL_FLOOR` is a judgement, not a measurement.** 0.6 is where a
+   wrong attribution stops being useful. It has not been calibrated against a
+   labelled set, which is what the unassigned tray is for.
+4. **One source, permanently for now.** TikTok, Instagram, Douyin, YouTube and
+   blog import are out of scope. A second platform is a deliberate change to the
+   union, a provider and a copy pass.
+5. **Images are per-browser.** Like trips and the origin, they live in IndexedDB on
+   one device. Moving to accounts replaces the persistence layer, not the
+   components, but it has not been done.
+6. **Twenty images is a ceiling, not a target.** A very long image-heavy guide has
+   to be imported in parts, and the UI says so rather than silently truncating.
