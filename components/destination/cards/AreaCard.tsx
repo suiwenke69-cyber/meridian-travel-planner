@@ -1,6 +1,8 @@
 'use client';
 
 import type { Area, Hotel, Place } from '@/lib/types';
+import { useT, useName, useLocale } from '@/lib/i18n/use-t';
+import { pick, pickList } from '@/lib/i18n';
 import { heroImage } from '@/lib/images';
 import { cn } from '@/lib/utils';
 import { ImageFrame } from '../../ui/ImageFrame';
@@ -28,6 +30,9 @@ export function AreaCard({
   /** Compact rows for the map-side list; full cards for the panel. */
   compact?: boolean;
 }) {
+  const t = useT();
+  const n = useName();
+  const locale = useLocale();
   const image = heroImage('area', area.id);
   const hotelCount = hotels.filter((h) => h.areaId === area.id).length;
   const placeCount = places.filter((p) => p.areaId === area.id).length;
@@ -45,9 +50,11 @@ export function AreaCard({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-            {area.name}
+            {n.primary(area)}
           </span>
-          <span className="mt-[2px] block truncate text-[11.5px] leading-tight text-muted">{area.tagline}</span>
+          <span className="mt-[2px] block truncate text-[11.5px] leading-tight text-muted">
+            {pick(area.taglineZh, area.tagline, locale)}
+          </span>
         </span>
         <span className="shrink-0 text-[11px] tabular-nums text-faint">{hotelCount + placeCount}</span>
       </button>
@@ -74,18 +81,22 @@ export function AreaCard({
           variant="card"
           sizes="(max-width: 1023px) 100vw, 360px"
           showCredit
-          fallbackLabel={`${area.name} — no area photography yet`}
+          fallbackLabel={t('image.noPhoto')}
         />
         <div className="px-4 pb-4 pt-3.5">
           <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.018em] text-ink">{area.name}</h3>
+            <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.018em] text-ink">{n.primary(area)}</h3>
             <span className="shrink-0 text-[11px] tabular-nums text-faint">
               {hotelCount > 0 ? `${hotelCount} hotels · ` : ''}
-              {placeCount} places
+              {t('explore.placeCount', { count: placeCount })}
             </span>
           </div>
-          <p className="mt-1.5 text-[12.5px] font-medium leading-tight text-accent">{area.tagline}</p>
-          <p className="mt-2.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-soft">{area.summary}</p>
+          <p className="mt-1.5 text-[12.5px] font-medium leading-tight text-accent">
+            {pick(area.taglineZh, area.tagline, locale)}
+          </p>
+          <p className="mt-2.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-soft">
+            {pick(area.summaryZh, area.summary, locale)}
+          </p>
         </div>
       </button>
     </article>
@@ -114,6 +125,9 @@ export function AreaDetail({
   onShowPlaces: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
+  const n = useName();
+  const locale = useLocale();
   const image = heroImage('area', area.id);
   const areaHotels = hotels.filter((h) => h.areaId === area.id);
   const marriott = areaHotels.filter((h) => h.hotelGroup === 'marriott').length;
@@ -128,29 +142,35 @@ export function AreaDetail({
         priority
         sizes="(max-width: 1023px) 100vw, 400px"
         showCredit
-        fallbackLabel={`${area.name} — no photo yet`}
+        fallbackLabel={t('image.noPhoto')}
       />
       <div className="px-4 pb-4 pt-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-[24px] font-semibold leading-none tracking-[-0.02em] text-ink">{area.name}</h2>
-            <p className="mt-1.5 text-[12.5px] font-medium text-accent">{area.tagline}</p>
+            <h2 className="text-[24px] font-semibold leading-none tracking-[-0.02em] text-ink">{n.primary(area)}</h2>
+            <p className="mt-1.5 text-[12.5px] font-medium text-accent">
+              {pick(area.taglineZh, area.tagline, locale)}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost btn-xs -mr-1.5 shrink-0 text-faint hover:text-ink">
             Close
           </button>
         </div>
 
-        <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">{area.summary}</p>
+        <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">{pick(area.summaryZh, area.summary, locale)}</p>
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-3.5">
           <div>
-            <dt className="label-caps">Best for</dt>
-            <dd className="mt-1 text-[12.5px] leading-snug text-ink-soft">{area.bestFor.slice(0, 5).join(' · ')}</dd>
+            <dt className="label-caps">{t('label.bestFor')}</dt>
+            <dd className="mt-1 text-[12.5px] leading-snug text-ink-soft">
+              {pickList(area.bestForZh, area.bestFor, locale).slice(0, 5).join(' · ')}
+            </dd>
           </div>
           <div>
-            <dt className="label-caps">Less ideal for</dt>
-            <dd className="mt-1 text-[12.5px] leading-snug text-ink-soft">{area.weakFor.slice(0, 3).join(' · ')}</dd>
+            <dt className="label-caps">{t('label.weakFor')}</dt>
+            <dd className="mt-1 text-[12.5px] leading-snug text-ink-soft">
+              {pickList(area.weakForZh, area.weakFor, locale).slice(0, 3).join(' · ')}
+            </dd>
           </div>
         </dl>
 
@@ -159,7 +179,7 @@ export function AreaDetail({
             <span className="font-medium text-ink-soft tabular-nums">
               ≈{airportMinutes.min}–{airportMinutes.max} min
             </span>{' '}
-            from DPS airport by road
+            {t('explore.fromAirport')}
           </p>
         )}
 
@@ -167,26 +187,26 @@ export function AreaDetail({
           {marriott > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11.5px]">
               <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-marriott" aria-hidden="true" />
-              {marriott} Marriott
+              {t('explore.marriottCount', { count: marriott })}
             </span>
           )}
           {hilton > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11.5px]">
               <span className="inline-block h-2.5 w-2.5 rounded-full bg-hilton" aria-hidden="true" />
-              {hilton} Hilton
+              {t('explore.hiltonCount', { count: hilton })}
             </span>
           )}
           <span className="rounded-full border border-line px-2.5 py-1 text-[11.5px] text-muted">
-            {placeCount} places
+            {t('explore.placeCount', { count: placeCount })}
           </span>
         </div>
 
         <div className="mt-4 flex gap-2">
           <button type="button" className="btn-secondary btn-xs flex-1" onClick={onShowHotels}>
-            See hotels
+            {t('explore.seeHotels')}
           </button>
           <button type="button" className="btn-secondary btn-xs flex-1" onClick={onShowPlaces}>
-            See places
+            {t('explore.seePlaces')}
           </button>
         </div>
       </div>

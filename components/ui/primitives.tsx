@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import { useT } from '@/lib/i18n/use-t';
 import { cn } from '@/lib/utils';
 import type { DataConfidence } from '@/lib/types';
 import { IconAlert, IconCheck, IconInfo } from './icons';
@@ -37,14 +40,15 @@ export function Tag({
  * that quietly mixes surveyed and guessed positions is worse than no planner.
  */
 export function ConfidenceBadge({ confidence, compact = false }: { confidence: DataConfidence; compact?: boolean }) {
+  const t = useT();
   if (confidence === 'verified') {
     return (
       <span
         className="inline-flex items-center gap-1 text-2xs font-medium text-nature"
-        title="Coordinate checked against a real source"
+        title={t('confidence.verifiedHint')}
       >
         <IconCheck size={11} />
-        {!compact && 'Verified location'}
+        {!compact && t('label.verifiedLocation')}
       </span>
     );
   }
@@ -52,17 +56,17 @@ export function ConfidenceBadge({ confidence, compact = false }: { confidence: D
     return (
       <span
         className="inline-flex items-center gap-1 text-2xs font-medium text-warn"
-        title="Placement is approximate — good for planning, not for turn-by-turn"
+        title={t('confidence.approximateHint')}
       >
         <IconInfo size={11} />
-        {!compact && 'Approximate location'}
+        {!compact && t('label.approximateLocation')}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-2xs font-medium text-muted" title="Demonstration data">
+    <span className="inline-flex items-center gap-1 text-2xs font-medium text-muted" title={t('confidence.demoHint')}>
       <IconInfo size={11} />
-      {!compact && 'Demo data'}
+      {!compact && t('label.demoLocation')}
     </span>
   );
 }

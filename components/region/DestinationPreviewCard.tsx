@@ -4,8 +4,21 @@ import Link from 'next/link';
 import type { Destination } from '@/lib/types';
 import type { DestinationStats } from '@/lib/data';
 import { formatMinutesRange, primaryRouteSummary, SINGAPORE_ORIGIN } from '@/lib/data';
-import { formatStayRange } from '@/lib/date';
 import { IconArrowRight, IconClose } from '../ui/icons';
+import { useName, useT, type Translator } from '@/lib/i18n/use-t';
+
+/**
+ * The stay range in the reader's language.
+ *
+ * `formatStayRange` in `lib/date` writes the English word "days"; the Chinese
+ * needs its own unit, and a `{count}` key cannot express the min–ideal band, so
+ * the band shape is replicated here and only the unit is translated.
+ */
+function stayRangeLabel(t: Translator, recommended: Destination['recommendedDays']): string {
+  if (recommended.max - recommended.min <= 1) return t('unit.days', { count: recommended.ideal });
+  const upper = Math.min(recommended.max, Math.max(recommended.ideal + 1, recommended.min + 2));
+  return `${recommended.min}–${t('unit.days', { count: upper })}`;
+}
 
 /**
  * The destination preview.
@@ -25,8 +38,11 @@ export function DestinationPreviewCard({
   stats: DestinationStats;
   onClose?: () => void;
 }) {
+  const t = useT();
+  const name = useName();
   const route = primaryRouteSummary(destination);
   const sin = SINGAPORE_ORIGIN.airports[0];
+  const hasLoyaltyHotels = stats.marriottCount + stats.hiltonCount > 0;
 
   return (
     <article className="panel mm-enter overflow-hidden" data-testid="destination-preview">
@@ -35,7 +51,7 @@ export function DestinationPreviewCard({
           <div className="min-w-0 flex-1">
             <p className="label-caps">{destination.country}</p>
             <h2 className="mt-1 text-[26px] font-semibold leading-none tracking-[-0.02em] text-ink">
-              {destination.name}
+              {name.primary(destination)}
             </h2>
           </div>
           {onClose && (
@@ -43,7 +59,7 @@ export function DestinationPreviewCard({
               type="button"
               onClick={onClose}
               className="btn-ghost btn-xs -mr-1.5 -mt-1 shrink-0 text-faint hover:text-ink"
-              aria-label={`Close ${destination.name} preview`}
+              aria-label={t('region.closePreview', { name: name.primary(destination) })}
             >
               <IconClose size={15} />
             </button>
@@ -52,18 +68,18 @@ export function DestinationPreviewCard({
       </header>
 
       {/* Route ------------------------------------------------------------ */}
-      <section className="border-t border-line px-4 py-3" aria-label="Route from Singapore">
+      <section className="border-t border-line px-4 py-3" aria-label={t('detail.fromSingapore')}>
         <p className="text-[15px] leading-tight text-ink">
           <span className="font-semibold">
             {route.airport?.flightMinutes
               ? formatMinutesRange(route.airport.flightMinutes.min, route.airport.flightMinutes.max)
               : '—'}
           </span>
-          <span className="text-ink-soft"> from Singapore</span>
+          <span className="text-ink-soft"> {t('detail.fromSingapore')}</span>
         </p>
         <p className="mt-1 text-[12.5px] leading-snug text-muted">
           <span className={route.direct ? 'font-medium text-accent' : 'font-medium text-warn'}>
-            {route.direct ? 'Direct' : 'Connection required'}
+            {route.direct ? t('region.direct') : t('detail.connectionRequired')}
           </span>
           <span className="mx-1.5 text-line-strong" aria-hidden="true">
             ·
@@ -82,13 +98,13 @@ export function DestinationPreviewCard({
       {/* Stay + character ------------------------------------------------ */}
       <section className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-0 border-t border-line px-4 py-3">
         <div>
-          <p className="label-caps">Ideal stay</p>
+          <p className="label-caps">{t('region.idealStay')}</p>
           <p className="mt-1 text-[13.5px] font-medium leading-tight text-ink">
-            {formatStayRange(destination.recommendedDays)}
+            {stayRangeLabel(t, destination.recommendedDays)}
           </p>
         </div>
         <div className="min-w-0">
-          <p className="label-caps">Good for</p>
+          <p className="label-caps">{t('region.bestFor')}</p>
           <p className="mt-1 text-[13px] leading-snug text-ink-soft">
             {destination.bestFor.slice(0, 3).join(' · ')}
           </p>
@@ -96,24 +112,26 @@ export function DestinationPreviewCard({
       </section>
 
       {/* Loyalty inventory ---------------------------------------------- */}
-      <section className="border-t border-line px-4 py-2.5" aria-label="Loyalty inventory">
+      <section className="border-t border-line px-4 py-2.5" aria-label={t('region.loyaltyHotels')}>
         <p className="text-[11.5px] leading-snug text-muted">
-          {stats.marriottCount + stats.hiltonCount > 0 ? (
+          {hasLoyaltyHotels ? (
             <>
-              <span className="font-medium text-ink-soft tabular-nums">{stats.marriottCount}</span> Marriott Bonvoy
+              <span className="font-medium text-ink-soft tabular-nums">{stats.marriottCount}</span>{' '}
+              {t('stay.filterMarriott')}
               <span className="mx-1.5 text-line-strong" aria-hidden="true">
                 ·
               </span>
-              <span className="font-medium text-ink-soft tabular-nums">{stats.hiltonCount}</span> Hilton Honors
+              <span className="font-medium text-ink-soft tabular-nums">{stats.hiltonCount}</span>{' '}
+              {t('stay.filterHilton')}
               <span className="mx-1.5 text-line-strong" aria-hidden="true">
                 ·
               </span>
-              <span className="tabular-nums">{stats.placeCount}</span> places mapped
+              <span className="tabular-nums">{stats.placeCount}</span> {t('region.placesMapped')}
             </>
           ) : (
             <>
-              No Marriott Bonvoy or Hilton Honors property here —{' '}
-              <span className="tabular-nums">{stats.placeCount}</span> places still mapped
+              {t('region.noLoyaltyHotel')}{' '}
+              <span className="tabular-nums">{stats.placeCount}</span> {t('region.placesMappedStill')}
             </>
           )}
         </p>
@@ -125,7 +143,7 @@ export function DestinationPreviewCard({
           className="btn-primary w-full"
           data-testid="explore-destination"
         >
-          Explore {destination.name}
+          {t('region.exploreDestination', { name: name.primary(destination) })}
           <IconArrowRight size={16} />
         </Link>
       </div>

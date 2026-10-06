@@ -1,10 +1,26 @@
+import type { Locale } from './types';
+
 /**
  * Date helpers for trip planning. Deliberately dependency-free.
  * All trip dates are handled as `yyyy-mm-dd` strings in the destination's local
  * calendar sense — never as UTC instants — to avoid off-by-one-day bugs.
+ *
+ * Formatting takes a locale because the product's primary language is Simplified
+ * Chinese. `Intl` does the work: `zh-CN` gives 11月19日 and 周三, `en-GB` gives
+ * 19 Nov and Wed, and neither is a hand-maintained month table that can drift.
  */
 
 export type IsoDate = string;
+
+/** `en-GB` was the hard-coded locale; kept as the English fallback. */
+const INTL_LOCALE: Record<Locale, string> = {
+  'zh-CN': 'zh-CN',
+  en: 'en-GB',
+};
+
+function localeTag(locale: Locale = 'zh-CN'): string {
+  return INTL_LOCALE[locale] ?? INTL_LOCALE['zh-CN'];
+}
 
 export function toIsoDate(date: Date): IsoDate {
   const y = date.getFullYear();
@@ -45,18 +61,25 @@ export function nightCount(arrival: IsoDate, departure: IsoDate): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
-export function formatDateShort(iso: IsoDate): string {
+export function formatDateShort(iso: IsoDate, locale: Locale = 'zh-CN'): string {
   const d = fromIsoDate(iso);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  // zh-CN gets the unambiguous 11月19日 form; en-GB keeps 19 Nov.
+  if (locale === 'zh-CN') {
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+  return d.toLocaleDateString(localeTag(locale), { day: 'numeric', month: 'short' });
 }
 
-export function formatDateLong(iso: IsoDate): string {
+export function formatDateLong(iso: IsoDate, locale: Locale = 'zh-CN'): string {
   const d = fromIsoDate(iso);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  if (locale === 'zh-CN') {
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${formatWeekday(iso, locale)}`;
+  }
+  return d.toLocaleDateString(localeTag(locale), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function formatWeekday(iso: IsoDate): string {
-  return fromIsoDate(iso).toLocaleDateString('en-GB', { weekday: 'short' });
+export function formatWeekday(iso: IsoDate, locale: Locale = 'zh-CN'): string {
+  return fromIsoDate(iso).toLocaleDateString(localeTag(locale), { weekday: 'short' });
 }
 
 /** `<input type="date">` friendly default arrival: 30 days from today. */
@@ -81,10 +104,13 @@ export function formatDaysNights(days: number, nights?: number): string {
  * shorthand reads like a database enum. The upper bound is kept close to the
  * ideal so a wide `max` (Bali goes to 10 days) does not imply an open-ended trip.
  */
-export function formatStayRange(recommended: { min: number; ideal: number; max: number }): string {
+export function formatStayRange(
+  recommended: { min: number; ideal: number; max: number },
+  locale: Locale = 'zh-CN',
+): string {
   if (recommended.max - recommended.min <= 1) {
-    return `${recommended.ideal} ${recommended.ideal === 1 ? 'day' : 'days'}`;
+    return locale === 'zh-CN' ? `${recommended.ideal} 天` : `${recommended.ideal} ${recommended.ideal === 1 ? 'day' : 'days'}`;
   }
   const upper = Math.min(recommended.max, Math.max(recommended.ideal + 1, recommended.min + 2));
-  return `${recommended.min}–${upper} days`;
+  return locale === 'zh-CN' ? `${recommended.min}–${upper} 天` : `${recommended.min}–${upper} days`;
 }

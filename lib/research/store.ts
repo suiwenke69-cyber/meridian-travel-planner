@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   CandidatePlace,
+  SocialSignals,
   MentionStatus,
   RecommendationType,
   SocialGuideSource,
@@ -244,10 +246,17 @@ export async function hydrateResearchStore() {
 
 // --- selectors --------------------------------------------------------------
 
-export function useResearchSignals() {
+/**
+ * Aggregated signals, memoised.
+ *
+ * The map is rebuilt only when the mentions or the sources actually change —
+ * every place card on screen asks for this, and recomputing the corpus on each
+ * render would make scrolling a restaurant list visibly expensive.
+ */
+export function useResearchSignals(): Map<string, SocialSignals> {
   const mentions = useResearchStore((s) => s.mentions);
   const sources = useResearchStore((s) => s.sources);
-  return aggregateSignals({ mentions, sources });
+  return useMemo(() => aggregateSignals({ mentions, sources }), [mentions, sources]);
 }
 
 export function useReviewQueue() {

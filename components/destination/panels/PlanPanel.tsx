@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { Destination, ItineraryItem, Place, Hotel, Trip, TripDay } from '@/lib/types';
 import { formatDateShort, formatStayRange, nightCount } from '@/lib/date';
-import { formatKm, formatMinutes } from '@/lib/geo';
+
 import { daySeverity } from '@/lib/efficiency';
 import type { DayAnalysis } from '@/lib/types';
 import { itemFromAirport } from '@/lib/trip';
@@ -12,6 +12,8 @@ import { useUiStore } from '@/lib/store/ui-store';
 import { useDayLegs } from '@/lib/transport/use-day-legs';
 import { heroImage } from '@/lib/images';
 import { cn } from '@/lib/utils';
+import { useT, useName, useLocale } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
 import { ImageFrame } from '../../ui/ImageFrame';
 import { TransportLegRow } from '../TransportLegRow';
 import { TripSetupForm } from '../../planner/TripSetupForm';
@@ -48,6 +50,8 @@ export function PlanPanel({
   onSelectDay: (dayId: string) => void;
   hydrated: boolean;
 }) {
+  const t = useT();
+  const locale = useLocale();
   const [showPreferences, setShowPreferences] = useState(false);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
 
@@ -55,7 +59,7 @@ export function PlanPanel({
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted">
         <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-strong border-t-accent" />
-        Loading your trips…
+        {t('plan.loadingTrips')}
       </div>
     );
   }
@@ -75,17 +79,23 @@ export function PlanPanel({
       <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="label-caps">Your trip</p>
+            <p className="label-caps">{t('plan.title')}</p>
             <h2 className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.015em]">
-              {formatDateShort(trip.arrivalDate)} → {formatDateShort(trip.departureDate)}
+              {t('plan.tripDates', {
+                from: formatDateShort(trip.arrivalDate, locale),
+                to: formatDateShort(trip.departureDate, locale),
+              })}
             </h2>
             <p className="mt-1 text-[12px] text-muted">
-              {trip.days.length} days · {nightCount(trip.arrivalDate, trip.departureDate)} nights ·{' '}
-              {trip.travellers} {trip.travellers === 1 ? 'traveller' : 'travellers'}
+              {t('plan.tripSummary', {
+                days: trip.days.length,
+                nights: nightCount(trip.arrivalDate, trip.departureDate),
+                travellers: trip.travellers,
+              })}
             </p>
           </div>
           <button type="button" className="btn-secondary btn-xs shrink-0" onClick={() => setShowPreferences((v) => !v)}>
-            {showPreferences ? 'Done' : 'Preferences'}
+            {showPreferences ? t('app.done') : t('plan.preferences')}
           </button>
         </div>
       </header>
@@ -127,9 +137,11 @@ function DayTabs({
   analyses: DayAnalysis[];
   onSelectDay: (dayId: string) => void;
 }) {
+  const t = useT();
+  const locale = useLocale();
   return (
     <div className="shrink-0 border-b border-line">
-      <div className="flex gap-1 overflow-x-auto no-scrollbar px-2 py-2" role="tablist" aria-label="Trip days">
+      <div className="flex gap-1 overflow-x-auto no-scrollbar px-2 py-2" role="tablist" aria-label={t('plan.dayTablistLabel')}>
         {trip.days.map((day) => {
           const severity = daySeverity(analyses.find((a) => a.dayId === day.id));
           const active = day.id === activeDayId;
@@ -147,10 +159,10 @@ function DayTabs({
               )}
             >
               <span className="flex items-center gap-1.5 text-[11.5px] font-semibold">
-                Day {day.index + 1}
+                {t('plan.day', { n: day.index + 1 })}
                 {severity !== 'ok' && (
                   <span
-                    aria-label={`Route note: ${severity}`}
+                    aria-label={severity}
                     className={cn(
                       'inline-block h-1.5 w-1.5 rounded-full',
                       severity === 'critical' ? 'bg-danger' : severity === 'warning' ? 'bg-warn' : 'bg-ocean',
@@ -158,8 +170,8 @@ function DayTabs({
                   />
                 )}
               </span>
-              <span className="mt-0.5 text-[10px] text-muted">{formatDateShort(day.date)}</span>
-              <span className="text-[10px] text-faint">{day.items.length} stops</span>
+              <span className="mt-0.5 text-[10px] text-muted">{formatDateShort(day.date, locale)}</span>
+              <span className="text-[10px] text-faint">{t('unit.stops', { count: day.items.length })}</span>
             </button>
           );
         })}
@@ -196,6 +208,9 @@ function DayTimeline({
   destinationId: string;
   onAddStop: () => void;
 }) {
+  const t = useT();
+  const n = useName();
+  const locale = useLocale();
   const { legs, loading, totals } = useDayLegs(day);
   const addItem = useTripStore((s) => s.addItem);
   const removeItem = useTripStore((s) => s.removeItem);
@@ -232,38 +247,41 @@ function DayTimeline({
       const source = place ?? hotel;
       map.set(item.id, {
         image: source ? heroImage(place ? 'place' : 'hotel', source.id) : undefined,
-        subtitle: [item.areaName ?? areaNameById.get(item.areaId ?? ''), item.durationMin ? formatMinutes(item.durationMin) : null]
+        subtitle: [item.areaName ?? areaNameById.get(item.areaId ?? ''), item.durationMin ? formatMinutes(item.durationMin, t) : null]
           .filter(Boolean)
           .join(' · '),
       });
     }
     return map;
-  }, [day.items, places, hotels, areaNameById]);
+  }, [day.items, places, hotels, areaNameById, t]);
 
   return (
     <div className="scroll-area min-h-0 flex-1 px-3 py-3">
       {/* day summary */}
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
-        <span className="font-semibold text-ink">Day {day.index + 1}</span>
+        <span className="font-semibold text-ink">{t('plan.day', { n: day.index + 1 })}</span>
         {day.items.length === 0 ? (
-          <span className="text-muted">Nothing planned yet</span>
+          <span className="text-muted">{t('plan.nothingPlanned')}</span>
         ) : loading ? (
-          <span className="text-muted">Measuring travel…</span>
+          <span className="text-muted">{t('plan.measuringTravel')}</span>
         ) : (
           <>
             {totals.measured > 0 && (
               <span className="tabular-nums text-ink-soft">
-                ≈{formatKm(totals.distanceMeters / 1000)} · ≈{formatMinutes(totals.durationSeconds / 60)} travel
+                {t('plan.travelTotal', {
+                  distance: t('unit.km', { value: (totals.distanceMeters / 1000).toFixed(1) }),
+                  duration: formatMinutes(totals.durationSeconds / 60, t),
+                })}
               </span>
             )}
             {partial && (
               <span className="rounded-full border border-warn/30 bg-warn/[0.07] px-2 py-[2px] text-[10.5px] font-medium text-warn">
-                {totals.unavailable} leg{totals.unavailable === 1 ? '' : 's'} without route data
+                {t('plan.legsUnavailable', { count: totals.unavailable })}
               </span>
             )}
             {crossAreaCount >= 2 && (
               <span className="rounded-full border border-line px-2 py-[2px] text-[10.5px] text-muted">
-                crosses {crossAreaCount + 1} areas
+                {t('plan.crossesAreas', { count: crossAreaCount + 1 })}
               </span>
             )}
           </>
@@ -272,13 +290,13 @@ function DayTimeline({
 
       {day.items.length === 0 ? (
         <div className="rounded-card border border-dashed border-line-strong bg-paper px-4 py-8 text-center">
-          <p className="text-[13px] font-semibold text-ink">Day {day.index + 1} is empty</p>
+          <p className="text-[13px] font-semibold text-ink">{t('plan.dayEmpty', { n: day.index + 1 })}</p>
           <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] leading-relaxed text-muted">
-            Add a hotel and a few places and the transport between them is measured automatically.
+            {t('plan.dayEmptyHint')}
           </p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
             <button type="button" className="btn-secondary btn-xs" onClick={onAddStop}>
-              Find places
+              {t('plan.findPlaces')}
             </button>
             {destination.airports[0] && (
               <button
@@ -292,7 +310,10 @@ function DayTimeline({
                   )
                 }
               >
-                Add {destination.airports[0].code} {day.index === 0 ? 'arrival' : 'departure'}
+                {t('plan.addAirport', {
+                  code: destination.airports[0].code,
+                  kind: t(day.index === 0 ? 'plan.arrivalLabel' : 'plan.departureLabel'),
+                })}
               </button>
             )}
           </div>
@@ -316,7 +337,7 @@ function DayTimeline({
                 >
                   <div className="w-[42px] shrink-0 pt-0.5 text-right">
                     <span className="block text-[11.5px] font-semibold tabular-nums text-ink-soft">{time}</span>
-                    {partial && <span className="block text-[9.5px] text-faint">approx</span>}
+                    {partial && <span className="block text-[9.5px] text-faint">{t('plan.timeApprox')}</span>}
                   </div>
 
                   <button
@@ -359,7 +380,7 @@ function DayTimeline({
                       className="btn-ghost btn-xs px-1"
                       onClick={() => index > 0 && reorderItem(trip.id, day.id, item.id, index - 1)}
                       disabled={index === 0}
-                      aria-label={`Move ${item.name} earlier`}
+                      aria-label={t('plan.moveEarlier')}
                       data-testid={`move-up-${item.id}`}
                     >
                       <IconArrowUp size={13} />
@@ -369,7 +390,7 @@ function DayTimeline({
                       className="btn-ghost btn-xs px-1"
                       onClick={() => index < day.items.length - 1 && reorderItem(trip.id, day.id, item.id, index + 1)}
                       disabled={index === day.items.length - 1}
-                      aria-label={`Move ${item.name} later`}
+                      aria-label={t('plan.moveLater')}
                       data-testid={`move-down-${item.id}`}
                     >
                       <IconArrowDown size={13} />
@@ -378,7 +399,7 @@ function DayTimeline({
                       type="button"
                       className="btn-ghost btn-xs px-1 text-muted hover:text-danger"
                       onClick={() => removeItem(trip.id, item.id)}
-                      aria-label={`Remove ${item.name}`}
+                      aria-label={t('plan.remove')}
                       data-testid={`remove-item-${item.id}`}
                     >
                       <IconClose size={13} />
@@ -412,7 +433,7 @@ function DayTimeline({
               onClick={onAddStop}
             >
               <IconPlus size={13} />
-              Add another stop
+              {t('plan.addAnotherStop')}
             </button>
           </li>
         </ol>
@@ -420,7 +441,7 @@ function DayTimeline({
 
       {analysis && analysis.suggestions.length > 0 && (
         <section className="mt-4 rounded-card border border-line bg-paper px-3 py-2.5">
-          <p className="label-caps mb-1.5">Route notes</p>
+          <p className="label-caps mb-1.5">{t('plan.routeNotes')}</p>
           <ul className="space-y-2">
             {analysis.suggestions.slice(0, 3).map((suggestion) => (
               <li key={suggestion.id} className="text-[11.5px] leading-relaxed text-ink-soft">
@@ -430,18 +451,26 @@ function DayTimeline({
             ))}
           </ul>
           <p className="mt-2 text-[10.5px] leading-relaxed text-faint">
-            These notes come from geographic heuristics on your own plan, not from a routing engine.
+            {t('plan.routeNotesDisclaimer')}
           </p>
         </section>
       )}
 
       <p className="mt-3 text-[10.5px] leading-relaxed text-faint">
-        Times assume a 09:00 start and use curated visit durations plus measured drive times. Traffic is not
-        modelled.
+        {t('plan.timeDisclaimer')}
         {destinationId ? '' : ''}
       </p>
     </div>
   );
+}
+
+/** 90 -> 1 小时 30 分钟 / 1 h 30 min. Never a bare "90". */
+function formatMinutes(minutes: number, t: ReturnType<typeof useT>): string {
+  const rounded = Math.round(minutes);
+  if (rounded < 60) return t('duration.minuteOnly', { m: rounded });
+  const h = Math.floor(rounded / 60);
+  const m = rounded % 60;
+  return m === 0 ? t('duration.hourOnly', { h }) : t('duration.hourMinute', { h, m });
 }
 
 function formatClock(minutes: number): string {

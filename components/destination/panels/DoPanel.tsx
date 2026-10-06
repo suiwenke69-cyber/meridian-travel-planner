@@ -6,55 +6,31 @@ import { cn } from '@/lib/utils';
 import { useUiStore, type DoCategory } from '@/lib/store/ui-store';
 import { useTripStore } from '@/lib/store/trip-store';
 import { isRefInTrip } from '@/lib/trip';
+import { useT } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
+import { DISCOVERY_CATEGORIES, placeMatchesCategory } from '@/lib/data/place-taxonomy';
 import { PlaceCard } from '../cards/PlaceCard';
 import { EmptyState } from '../../ui/primitives';
 
-const CATEGORIES: Array<{ id: DoCategory; label: string }> = [
-  { id: 'highlights', label: 'Highlights' },
-  { id: 'beach', label: 'Beaches' },
-  { id: 'nature', label: 'Nature' },
-  { id: 'culture', label: 'Culture' },
-  { id: 'food', label: 'Food' },
-  { id: 'nightlife', label: 'Nightlife' },
-  { id: 'water', label: 'On the water' },
-];
+/**
+ * DO shows one category at a time, and within it, one area at a time.
+ *
+ * Both filters exist because they answer different questions: the category is
+ * "what kind of thing do I feel like", the area is "where am I willing to
+ * drive". 美食 + 长谷 is a decision; 美食 alone across a whole island is a list.
+ *
+ * The matching itself lives in `lib/data/place-taxonomy` and reads each place's
+ * authored `discovery` ids rather than guessing from an enum — a beach club is
+ * genuinely both a beach club and nightlife, and inferring that from one field
+ * lost most of it.
+ */
 
-/** Places that count as a curated highlight, ranked by how much they define a trip. */
-const HIGHLIGHT_TAGS = ['UNESCO', 'Temple', 'Culture', 'Sunset', 'Nature', 'Beach', 'Views', 'Iconic'];
+const CATEGORY_IDS = DISCOVERY_CATEGORIES.map((c) => c.id);
 
-function matchesCategory(place: Place, category: DoCategory): boolean {
-  switch (category) {
-    case 'highlights':
-      return place.tags.some((tag) => HIGHLIGHT_TAGS.includes(tag)) || place.subcategory === 'temple';
-    case 'beach':
-      return place.category === 'beach';
-    case 'nature':
-      return place.category === 'nature';
-    case 'culture':
-      return place.subcategory === 'temple' || place.subcategory === 'landmark' || place.subcategory === 'museum' || place.subcategory === 'market';
-    case 'food':
-      return place.category === 'food';
-    case 'nightlife':
-      return place.category === 'nightlife' || place.subcategory === 'beach club';
-    case 'water':
-      return (
-        place.subcategory === 'diving' ||
-        place.subcategory === 'surf spot' ||
-        place.subcategory === 'harbour' ||
-        place.subcategory === 'island' ||
-        place.tags.some((t) => /Diving|Snorkelling|Surfing|Island hopping|Kayaking/i.test(t))
-      );
-    default:
-      return true;
-  }
+export function matchesCategory(place: Place, category: DoCategory): boolean {
+  return placeMatchesCategory(place, category);
 }
 
-/**
- * DO shows one category at a time.
- *
- * The map follows the category, so the user never faces every marker at once —
- * which was the single biggest source of clutter in the previous build.
- */
 export function DoPanel({
   destinationId,
   places,
@@ -74,8 +50,11 @@ export function DoPanel({
   selectedPlaceId: string | null;
   onClearArea: () => void;
 }) {
+  const t = useT();
   const category = useUiStore((s) => s.doCategory);
   const setDoCategory = useUiStore((s) => s.setDoCategory);
+  const selectArea = useUiStore((s) => s.selectArea);
+
   const trip = useTripStore((s) => {
     const active = s.trips.find((t) => t.id === s.activeTripId);
     if (active && active.destinationId === destinationId) return active;
@@ -85,70 +64,135 @@ export function DoPanel({
     );
   });
 
-  const counts = useMemo(() => {
-    const map = new Map<DoCategory, number>();
-    for (const { id } of CATEGORIES) map.set(id, places.filter((p) => matchesCategory(p, id)).length);
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const id of CATEGORY_IDS) map.set(id, places.filter((p) => placeMatchesCategory(p, id)).length);
     return map;
   }, [places]);
 
+  /** Areas that actually hold something in the selected category, with counts. */
+  const areaCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const place of places) {
+      if (!placeMatchesCategory(place, category)) continue;
+      map.set(place.areaId, (map.get(place.areaId) ?? 0) + 1);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [places, category]);
+
   const visible = useMemo(() => {
     const scoped = focusedAreaId ? places.filter((p) => p.areaId === focusedAreaId) : places;
-    return scoped.filter((p) => matchesCategory(p, category));
+    return scoped
+      .filter((p) => placeMatchesCategory(p, category))
+      .sort((a, b) => {
+        // Photographed places first: a screen of empty cards is a poor first impression.
+        const aHas = a.images.length > 0 ? 0 : 1;
+        const bHas = b.images.length > 0 ? 0 : 1;
+        if (aHas !== bHas) return aHas - bHas;
+        return a.name.localeCompare(b.name);
+      });
   }, [places, category, focusedAreaId]);
+
+  const areaLabel = focusedAreaId ? (areaNameById.get(focusedAreaId) ?? focusedAreaId) : null;
 
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
-        <h2 className="text-[19px] font-semibold tracking-[-0.015em]">What to do</h2>
+        <h2 className="text-[19px] font-semibold tracking-[-0.015em]">{t('do.title')}</h2>
         <p className="mt-1 text-[12px] leading-relaxed text-muted">
-          {focusedAreaId
-            ? `${visible.length} ${visible.length === 1 ? 'place' : 'places'} in ${areaNameById.get(focusedAreaId)}.`
-            : 'The map shows only the category you pick, so it stays readable.'}
+          {areaLabel ? t('do.restaurantsIn', { area: areaLabel }) : t('do.subtitle')}
         </p>
-        {focusedAreaId && (
+
+        <div className="mt-2.5 flex flex-wrap gap-1" data-testid="do-categories">
+          {DISCOVERY_CATEGORIES.map((entry) => {
+            const active = category === entry.id;
+            const count = categoryCounts.get(entry.id) ?? 0;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setDoCategory(entry.id as DoCategory)}
+                data-testid={`do-category-${entry.id}`}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11.5px] font-medium transition-colors duration-150',
+                  active
+                    ? 'border-accent/25 bg-accent-soft text-accent'
+                    : 'border-line bg-surface text-ink-soft hover:border-line-strong',
+                )}
+              >
+                {t(`cat.${entry.id}` as MessageKey)}
+                <span className="tabular-nums text-faint">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Area row — only areas that hold something in this category */}
+        {areaCounts.length > 1 && (
+          <div className="mt-2 border-t border-line pt-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="label-caps">{t('do.filterByArea')}</span>
+              {focusedAreaId && (
+                <button type="button" className="btn-ghost btn-xs text-muted" data-testid="do-clear-area" onClick={onClearArea}>
+                  {t('do.showAllAreas')}
+                </button>
+              )}
+            </div>
+            <div className="no-scrollbar flex gap-1 overflow-x-auto pb-0.5" data-testid="do-areas">
+              {areaCounts.map(([areaId, count]) => {
+                const active = focusedAreaId === areaId;
+                return (
+                  <button
+                    key={areaId}
+                    type="button"
+                    aria-pressed={active}
+                    data-testid={`do-area-${areaId}`}
+                    onClick={() => selectArea(active ? null : areaId)}
+                    className={cn(
+                      'shrink-0 rounded-full border px-2 py-[3px] text-[11px] transition-colors',
+                      active
+                        ? 'border-accent/30 bg-accent text-white'
+                        : 'border-line bg-surface text-ink-soft hover:border-line-strong',
+                    )}
+                  >
+                    {areaNameById.get(areaId) ?? areaId}
+                    <span className={cn('ml-1 tabular-nums', active ? 'text-white/70' : 'text-faint')}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* A removable chip, so an area inherited from the map is never invisible */}
+        {focusedAreaId && areaCounts.length <= 1 && (
           <button
             type="button"
             onClick={onClearArea}
             data-testid="area-filter-chip"
             className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-soft px-2.5 py-1 text-[11.5px] font-medium text-accent"
           >
-            {areaNameById.get(focusedAreaId) ?? focusedAreaId}
+            {areaLabel}
             <span aria-hidden="true">×</span>
-            <span className="sr-only">Clear area filter</span>
+            <span className="sr-only">{t('do.clearArea')}</span>
           </button>
         )}
 
-        <div className="mt-2.5 flex flex-wrap gap-1">
-          {CATEGORIES.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={category === id}
-              onClick={() => setDoCategory(id)}
-              data-testid={`do-category-${id}`}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11.5px] font-medium transition-colors duration-150',
-                category === id
-                  ? 'border-accent/25 bg-accent-soft text-accent'
-                  : 'border-line bg-surface text-ink-soft hover:border-line-strong',
-              )}
-            >
-              {label}
-              <span className="tabular-nums text-faint">{counts.get(id) ?? 0}</span>
-            </button>
-          ))}
-        </div>
+        <p className="mt-2 text-[11.5px] tabular-nums text-faint">
+          {t('do.resultCount', { count: visible.length })}
+        </p>
       </header>
 
       <div className="scroll-area min-h-0 flex-1 space-y-3 p-3">
         {visible.length === 0 ? (
           <EmptyState
-            title="Nothing in this category here"
-            body="Try another category, or search the whole island."
+            title={t('do.emptyTitle')}
+            body={focusedAreaId ? t('do.emptyInArea', { area: areaLabel ?? '' }) : t('do.emptyCategory')}
             action={
               focusedAreaId ? (
                 <button type="button" className="btn-secondary btn-xs" onClick={onClearArea} data-testid="do-clear-area">
-                  Search all of Bali
+                  {t('do.showAllAreas')}
                 </button>
               ) : undefined
             }
@@ -172,4 +216,4 @@ export function DoPanel({
   );
 }
 
-export { matchesCategory, CATEGORIES };
+export { DISCOVERY_CATEGORIES as CATEGORIES };

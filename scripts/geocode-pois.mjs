@@ -75,23 +75,76 @@ function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-async function nominatim(query, attempt = 0) {
-  const url = `${ENDPOINT}?q=${encodeURIComponent(query)}&format=jsonv2&limit=3&addressdetails=1`;
+async function nominatim(query, attempt = 0, viewbox) {
+  // `bounded=1` is what makes a common venue name usable: without it, searching
+  // "Mason" returns a town in Ohio. Constraining the box to the area the venue
+  // claims to be in turns a global name search into a local one.
+  const box = viewbox ? `&viewbox=${viewbox}&bounded=1` : '';
+  const url = `${ENDPOINT}?q=${encodeURIComponent(query)}&format=jsonv2&limit=3&addressdetails=1${box}`;
   try {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
-    if (res.status === 429 && attempt < 3) {
-      await sleep(4000 * (attempt + 1));
-      return nominatim(query, attempt + 1);
+    if (res.status === 429 && attempt < 4) {
+      await sleep(6000 * (attempt + 1));
+      return nominatim(query, attempt + 1, viewbox);
     }
     if (!res.ok) return null;
     return await res.json();
   } catch {
-    if (attempt < 3) {
-      await sleep(2500 * (attempt + 1));
-      return nominatim(query, attempt + 1);
+    if (attempt < 4) {
+      await sleep(3500 * (attempt + 1));
+      return nominatim(query, attempt + 1, viewbox);
     }
     return null;
   }
+}
+
+/** A ~0.12° box around the area centre, left,top,right,bottom as Nominatim wants. */
+function viewboxFor(anchor) {
+  if (!anchor) return undefined;
+  const d = 0.12;
+  return `${anchor.lng - d},${anchor.lat + d},${anchor.lng + d},${anchor.lat - d}`;
+}
+
+/**
+ * Query shapes, tried in order.
+ *
+ * The first version used one shape and resolved 23 of 100 — Nominatim's free-text
+ * search is fussy about how much context you give it. More context helps for an
+ * unambiguous name and hurts for a common one, so both directions are tried, and
+ * the bounded forms catch what global search scatters.
+ */
+/**
+ * The name as OSM is likely to hold it.
+ *
+ * `Goa Gajah (Elephant Cave)` returns nothing; `Goa Gajah` returns the temple.
+ * `Betelnut Café` returns nothing; the accent is the problem. Both are the kind
+ * of noise a data author naturally writes and a gazetteer does not.
+ */
+function cleanName(name) {
+  return name
+    .replace(/\s*[（(][^)）]*[)）]\s*/g, ' ')
+    .split(' · ')[0]
+    .split(' — ')[0]
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function queryShapes(name, anchor) {
+  const area = anchor?.name;
+  const clean = cleanName(name);
+  const shapes = [];
+  if (clean !== name) {
+    if (area) shapes.push({ q: `${clean}, ${area}, Bali`, box: undefined });
+    shapes.push({ q: `${clean}, Bali`, box: viewboxFor(anchor) });
+  }
+  if (area) shapes.push({ q: `${name}, ${area}, Bali`, box: undefined });
+  shapes.push({ q: `${clean}, Bali, Indonesia`, box: undefined });
+  shapes.push({ q: clean, box: viewboxFor(anchor) });
+  // Last resort: the original name, bounded to the area.
+  shapes.push({ q: name, box: viewboxFor(anchor) });
+  return shapes;
 }
 
 const anchors = loadAreaAnchors();
@@ -131,10 +184,17 @@ for (const relative of FILES) {
     const areaId = /areaId: '([a-z0-9-]+)'/.exec(block)?.[1] ?? '';
 
     const anchor = anchors.get(areaId);
-    const query = anchor ? `${name}, ${anchor.name}, Bali` : `${name}, Bali`;
 
-    const results = await nominatim(query);
-    await sleep(1100);
+    let results = null;
+    for (const shape of queryShapes(name, anchor)) {
+      // eslint-disable-next-line no-await-in-loop
+      const attempt = await nominatim(shape.q, 0, shape.box);
+      await sleep(1500);
+      if (Array.isArray(attempt) && attempt.length > 0) {
+        results = attempt;
+        break;
+      }
+    }
 
     if (!Array.isArray(results) || results.length === 0) {
       failures.push({ file: relative, id: entry.id, name, reason: 'no result' });
@@ -179,7 +239,7 @@ for (const relative of FILES) {
       ? `OpenStreetMap ${kind} — Nominatim match for "${name}", ${chosen.display_name?.split(',').slice(0, 3).join(', ') ?? 'Bali'}.`
       : `Approximate: OpenStreetMap ${kind} matched "${name}" ${distanceKm.toFixed(1)} km from the ${areaId} centre, so treat the pin as indicative.`;
 
-    patches.set(entry.index, {
+    patches.set(entry.id, {
       replacement: `coordinates: { lat: ${point.lat.toFixed(5)}, lng: ${point.lng.toFixed(5)}, confidence: '${confidence}', coordNote: ${JSON.stringify(note)} }`,
       id: entry.id,
     });
@@ -188,14 +248,27 @@ for (const relative of FILES) {
   }
 
   /*
-   * Rebuild from the end so earlier indices stay valid.
+   * Patch by id, not by character offset.
+   *
+   * The first version recorded each entry's offset in the ORIGINAL source and
+   * then did index surgery on a mutating string. It reported "11 resolved"
+   * while leaving every placeholder in place — the offsets and the output had
+   * drifted apart, and nothing about the result looked wrong.
+   *
+   * Matching `id -> placeholder` makes the operation idempotent and immune to
+   * any drift: an id appears once, and the placeholder it owns is unambiguous.
    */
   let output = source;
-  const ordered = [...patches.entries()].sort((a, b) => b[0] - a[0]);
-  for (const [index, patch] of ordered) {
-    const coordStart = output.indexOf('coordinates:', index);
-    const coordEnd = output.indexOf('}', output.indexOf('coordNote', coordStart)) + 1;
-    output = output.slice(0, coordStart) + patch.replacement + output.slice(coordEnd);
+  for (const [id, patch] of patches) {
+    const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(
+      `(id: '${esc}',[\\s\\S]*?)coordinates: \\{ lat: 0, lng: 0, confidence: 'demo', coordNote: 'PENDING GEOCODE' \\}`,
+    );
+    if (!re.test(output)) {
+      failures.push({ file: relative, id, name: id, reason: 'resolved but the placeholder could not be found — not written' });
+      continue;
+    }
+    output = output.replace(re, `$1${patch.replacement}`);
   }
 
   // Anything still holding a placeholder did not resolve.

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { Trip } from '@/lib/types';
 import { findEntity } from '@/lib/data';
 import { isRefInTrip, itemFromAirport, itemFromHotel, itemFromPlace } from '@/lib/trip';
+import { useT, type Translator } from '@/lib/i18n/use-t';
 import { useTripStore } from '@/lib/store/trip-store';
 import { useUiStore } from '@/lib/store/ui-store';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ export function AddToTripButton({
   const selectDay = useUiStore((s) => s.selectDay);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
   const selectedDayId = useUiStore((s) => s.selectedDayId);
+  const t = useT();
 
   const trip: Trip | null = useMemo(() => {
     const active = trips.find((t) => t.id === activeTripId);
@@ -64,7 +66,7 @@ export function AddToTripButton({
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-accent/25 bg-accent-soft px-2.5 py-1 text-[11.5px] font-semibold text-accent">
         <IconCheck size={13} />
-        {dayLabel(trip, inTrip.dayId)}
+        {dayLabel(t, trip, inTrip.dayId)}
       </span>
     );
   }
@@ -81,12 +83,13 @@ export function AddToTripButton({
         data-testid="add-to-trip-needs-trip"
       >
         <IconPlus size={size === 'sm' ? 13 : 15} />
-        Start a trip to save this
+        {t('addToTrip.startTrip')}
       </button>
     );
   }
 
   const preferredDayId = selectedDayId ?? trip.days[0]?.id;
+  const preferredDay = trip.days.find((d) => d.id === preferredDayId);
 
   return (
     <div className={cn('flex items-stretch', className)}>
@@ -97,16 +100,16 @@ export function AddToTripButton({
         data-testid="add-to-trip"
       >
         <IconPlus size={size === 'sm' ? 13 : 15} />
-        Add to {dayLabel(trip, preferredDayId)}
+        {preferredDay ? t('addToTrip.addToDay', { n: preferredDay.index + 1 }) : t('addToTrip.add')}
       </button>
       <Popover
-        ariaLabel="Choose a day"
+        ariaLabel={t('addToTrip.chooseDay')}
         align="end"
         side="top"
         trigger={({ toggle }) => (
           <button
             type="button"
-            aria-label="Choose which day to add to"
+            aria-label={t('addToTrip.chooseDay')}
             onClick={toggle}
             className={cn('btn-primary rounded-l-none border-l border-white/25 px-1.5', size === 'sm' && 'py-1')}
           >
@@ -127,8 +130,8 @@ export function AddToTripButton({
                     close();
                   }}
                 >
-                  <span className="font-medium">Day {day.index + 1}</span>
-                  <span className="text-2xs text-muted">{day.items.length} stops</span>
+                  <span className="font-medium">{t('plan.day', { n: day.index + 1 })}</span>
+                  <span className="text-2xs text-muted">{t('addToTrip.stopsCount', { count: day.items.length })}</span>
                 </button>
               </li>
             ))}
@@ -139,10 +142,10 @@ export function AddToTripButton({
   );
 }
 
-function dayLabel(trip: Trip | null, dayId: string | undefined): string {
-  if (!trip || !dayId) return 'trip';
+function dayLabel(t: Translator, trip: Trip | null, dayId: string | undefined): string {
+  if (!trip || !dayId) return t('addToTrip.add');
   const day = trip.days.find((d) => d.id === dayId);
-  return day ? `Day ${day.index + 1}` : 'trip';
+  return day ? t('plan.day', { n: day.index + 1 }) : t('addToTrip.add');
 }
 
 function buildItem(destinationId: string, refId: string) {

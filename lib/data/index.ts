@@ -128,6 +128,27 @@ export function getAllPlaces(): Place[] {
   return PLACES;
 }
 
+/**
+ * True when we know where a place is.
+ *
+ * A place whose coordinates never resolved from a map source keeps
+ * `confidence: 'demo'` and sits at 0,0. It is still worth reading about, but it
+ * must never reach the map — a pin in the Gulf of Guinea, or a route that
+ * measures 8,000 km to dinner, is worse than an honest "location not verified".
+ *
+ * `demo` is the marker rather than a separate boolean because it already means
+ * exactly this, and the confidence badge in the UI renders it.
+ */
+export function isLocatable(place: Place): boolean {
+  return place.coordinates.confidence !== 'demo';
+}
+
+/** Places we can actually put on a map, which is what routing and the map need. */
+export function getLocatablePlaces(destinationId?: string): Place[] {
+  const list = destinationId ? getPlaces(destinationId) : PLACES;
+  return list.filter(isLocatable);
+}
+
 /** All airports across the region — used by the transport overview. */
 export function getAllAirports(): Airport[] {
   return DESTINATIONS.flatMap((d) => d.airports);

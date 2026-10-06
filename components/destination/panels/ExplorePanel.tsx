@@ -4,6 +4,9 @@ import { useMemo } from 'react';
 import type { Area, Destination, Hotel, Place } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useUiStore, type ExploreScope } from '@/lib/store/ui-store';
+import { useT, useName } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
+import { pick } from '@/lib/i18n';
 import { Segmented } from '../../ui/Segmented';
 import { AreaCard, AreaDetail } from '../cards/AreaCard';
 import { AREA_ORDER, ZONE_ORDER, areaRank } from '@/lib/data/area-taglines';
@@ -18,6 +21,13 @@ type Scope = ExploreScope;
  * There is deliberately no trip form here. Planning starts when the traveller
  * chooses to start planning.
  */
+/** Country name from the catalogue, falling back to the data's own string. */
+function countryLabel(destination: { country: string; region: string }, t: ReturnType<typeof useT>): string {
+  const key = `country.${destination.country.toLowerCase()}` as MessageKey;
+  const value = t(key);
+  return value === key ? destination.country : value;
+}
+
 export function ExplorePanel({
   destination,
   areas,
@@ -39,6 +49,9 @@ export function ExplorePanel({
   onHoverArea: (id: string | null) => void;
   onFocusWholeIsland: () => void;
 }) {
+  const t = useT();
+  const name = useName();
+  const locale = useUiStore((s) => s.locale);
   const scope = useUiStore((s) => s.exploreScope);
   const setScope = useUiStore((s) => s.setExploreScope);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
@@ -87,34 +100,34 @@ export function ExplorePanel({
   return (
     <div className="scroll-area h-full">
       <header className="px-4 pb-3 pt-4">
-        <p className="label-caps">{destination.country}</p>
+        <p className="label-caps">{countryLabel(destination, t)}</p>
         <h2 className="mt-1 text-[26px] font-semibold leading-none tracking-[-0.02em] text-ink">
-          {destination.name}
+          {name.primary(destination)}
         </h2>
-        <p className="mt-2.5 text-[13px] leading-relaxed text-ink-soft">{destination.description}</p>
+        <p className="mt-2.5 text-[13px] leading-relaxed text-ink-soft">
+          {pick(destination.descriptionZh, destination.description, locale)}
+        </p>
         <button type="button" className="btn-secondary btn-xs mt-3" onClick={onFocusWholeIsland}>
-          Show the whole island
+          {t('explore.showWholeIsland')}
         </button>
       </header>
 
       <div className="border-t border-line px-4 py-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Where to base yourself</h3>
+          <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{t('explore.whereToBase')}</h3>
           <Segmented<Scope>
-            ariaLabel="Area scope"
+            ariaLabel={t('explore.scopeLabel')}
             value={scope}
             onChange={setScope}
             size="sm"
             options={[
-              { value: 'stay', label: 'Stay', badge: stayAreas.length },
-              { value: 'daytrip', label: 'Day trips', badge: dayTripAreas.length },
+              { value: 'stay', label: t('explore.scopeStay'), badge: stayAreas.length },
+              { value: 'daytrip', label: t('explore.scopeDaytrip'), badge: dayTripAreas.length },
             ]}
           />
         </div>
         <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-          {scope === 'stay'
-            ? 'These are the regions travellers actually base themselves in. Pick one and the map follows.'
-            : 'Reachable as a day trip or an overnight from the main bases, not as a base themselves.'}
+          {scope === 'stay' ? t('explore.whereToBaseHint') : t('explore.whereToBaseHintDaytrip')}
         </p>
       </div>
 
@@ -134,8 +147,7 @@ export function ExplorePanel({
 
       <footer className="border-t border-line px-4 py-3">
         <p className="text-[11.5px] leading-relaxed text-muted">
-          {counts.size} regions mapped in this planner. Area shapes are approximate extents, not official
-          boundaries.
+          {t('explore.regionsMapped', { count: counts.size })}
         </p>
       </footer>
     </div>

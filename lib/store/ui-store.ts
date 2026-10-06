@@ -21,8 +21,25 @@ import { defaultLayerVisibility } from '../layers';
  */
 export type PanelTab = 'explore' | 'stay' | 'do' | 'plan';
 
-/** Category filter inside DO. `highlights` is the curated default. */
-export type DoCategory = 'highlights' | 'beach' | 'nature' | 'culture' | 'food' | 'nightlife' | 'water';
+/**
+ * Category filter inside DO.
+ *
+ * The id list lives here but the labels and the matching rules do not — those
+ * come from `lib/data/place-taxonomy`, so the chip row, the map's marker set and
+ * the research pipeline all read the same vocabulary.
+ */
+export type DoCategory =
+  | 'highlights'
+  | 'food'
+  | 'coffee'
+  | 'beachclub'
+  | 'beach'
+  | 'nature'
+  | 'culture'
+  | 'nightlife'
+  | 'water'
+  | 'wellness'
+  | 'shopping';
 /**
  * Which half of EXPLORE is on screen. This lives in the store rather than in
  * the panel because the MAP has to agree with it: showing all twenty-two travel

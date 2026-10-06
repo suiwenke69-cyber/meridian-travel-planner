@@ -318,6 +318,23 @@ export type LegSource =
 
 export type LegConfidence = 'measured' | 'estimated' | 'approximate' | 'unavailable';
 
+/**
+ * The transport rules, as ids.
+ *
+ * Recommendation logic produces an id and its numbers; the copy lives in the
+ * message catalogue. That is the difference between a localized product and an
+ * English product with translated labels — a rationale assembled by string
+ * concatenation can never be rendered well in a second language.
+ */
+export type TransportRationaleKey =
+  | 'water-crossing'
+  | 'airport-transfer'
+  | 'walkable'
+  | 'short-hop'
+  | 'medium-hop'
+  | 'long-pickup'
+  | 'cross-island';
+
 export interface TransportLeg {
   id: string;
   fromItemId: string;
@@ -328,8 +345,17 @@ export interface TransportLeg {
   mode: TransportMode;
   /** Every mode that could work, best first. Drives the "or take a…" line. */
   alternatives: TransportMode[];
-  /** One short sentence explaining the recommendation. */
+  /**
+   * One short sentence explaining the recommendation.
+   *
+   * English, and kept for the `en` locale. The UI resolves `rationaleKey`
+   * when one is present, so the explanation is written in the reader's language
+   * rather than translated sentence-fragment by sentence-fragment.
+   */
   rationale: string;
+  /** Which rule produced this leg, so the UI can say it in the right language. */
+  rationaleKey?: TransportRationaleKey;
+  rationaleParams?: Record<string, string | number>;
   /** Road/route distance in metres, or null when unavailable. */
   distanceMeters: number | null;
   /** Travel duration in seconds, or null when unavailable. */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { getDestinationBundle } from '@/lib/data';
+import { getDestinationBundle, isLocatable } from '@/lib/data';
 import { countMarkersByLayer, buildMapMarkers } from '@/lib/map-markers';
 import { useTripStore } from '@/lib/store/trip-store';
 import { useUiStore } from '@/lib/store/ui-store';
@@ -104,7 +104,7 @@ export default function DestinationMapView({
     }
 
     if (tab === 'do') {
-      const scoped = bundle.places.filter((p) => matchesCategory(p, doCategory));
+      const scoped = bundle.places.filter((p) => matchesCategory(p, doCategory) && isLocatable(p));
       const layers = emptyLayers();
       for (const place of scoped) layers[place.markerLayer] = true;
       return buildMapMarkers({
@@ -242,7 +242,7 @@ export default function DestinationMapView({
 
     if (tab === 'do') {
       const places = bundle.places.filter(
-        (p) => (!focusedArea || p.areaId === focusedArea.id) && matchesCategory(p, doCategory),
+        (p) => (!focusedArea || p.areaId === focusedArea.id) && matchesCategory(p, doCategory) && isLocatable(p),
       );
       if (places.length === 0) return;
       fit(places.map((p) => p.coordinates), 11.2);

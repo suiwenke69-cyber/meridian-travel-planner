@@ -13,13 +13,15 @@ import {
 } from '@/lib/data';
 
 import { cn } from '@/lib/utils';
-import { formatStayRange } from '@/lib/date';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
 import { EmptyState } from '../ui/primitives';
 import { IconArrowRight, IconInfo, IconSearch } from '../ui/icons';
 import { Popover } from '../ui/Popover';
+import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { DestinationPreviewCard } from './DestinationPreviewCard';
 import { useIsDesktop } from '@/lib/hooks';
+import type { MessageKey } from '@/lib/i18n';
+import { message, useName, useT, type Translator } from '@/lib/i18n/use-t';
 
 const RegionMapView = dynamic(() => import('./RegionMapView'), {
   ssr: false,
@@ -27,7 +29,7 @@ const RegionMapView = dynamic(() => import('./RegionMapView'), {
     <div className="absolute inset-0 flex items-center justify-center bg-[var(--map-land)]">
       <div className="flex items-center gap-2 text-xs text-muted">
         <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-strong border-t-accent" />
-        Loading the map…
+        {message('zh-CN', 'app.loadingMap')}
       </div>
     </div>
   ),
@@ -35,12 +37,29 @@ const RegionMapView = dynamic(() => import('./RegionMapView'), {
 
 type RailFilter = 'all' | 'direct' | 'beach' | 'weekend';
 
-const FILTERS: Array<{ id: RailFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'direct', label: 'Direct' },
-  { id: 'beach', label: 'Beach' },
-  { id: 'weekend', label: 'Weekend' },
+/**
+ * Filter labels are catalogue keys rather than literals: the rail renders before
+ * any hook could be called and the list is a module constant.
+ */
+const FILTERS: Array<{ id: RailFilter; label: MessageKey }> = [
+  { id: 'all', label: 'region.filterAll' },
+  { id: 'direct', label: 'region.direct' },
+  { id: 'beach', label: 'region.filterBeach' },
+  { id: 'weekend', label: 'region.filterWeekend' },
 ];
+
+/**
+ * The stay range in the reader's language.
+ *
+ * `formatStayRange` in `lib/date` writes the English word "days"; the Chinese
+ * needs its own unit, and a `{count}` key cannot express the min–ideal band, so
+ * the band shape is replicated here and only the unit is translated.
+ */
+function stayRangeLabel(t: Translator, recommended: Destination['recommendedDays']): string {
+  if (recommended.max - recommended.min <= 1) return t('unit.days', { count: recommended.ideal });
+  const upper = Math.min(recommended.max, Math.max(recommended.ideal + 1, recommended.min + 2));
+  return `${recommended.min}–${t('unit.days', { count: upper })}`;
+}
 
 /**
  * The homepage.
@@ -58,6 +77,8 @@ export default function RegionExplorer() {
   // search field just visible as the invitation to explore.
   const [snap, setSnap] = useState<SheetSnap>('peek');
   const isDesktop = useIsDesktop();
+  const t = useT();
+  const name = useName();
 
   const destinations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -123,20 +144,22 @@ export default function RegionExplorer() {
             snap={snap}
             onSnapChange={setSnap}
             peekHeight={158}
-            ariaLabel="Destinations"
+            ariaLabel={t('region.title')}
             header={
               selected && stats ? (
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate text-sm font-semibold tracking-tight">{selected.name}</span>
+                  <span className="truncate text-sm font-semibold tracking-tight">
+                    {name.primary(selected)}
+                  </span>
                   <span className="truncate text-2xs text-muted">
                     {primaryRouteSummary(selected).durationLabel}
                   </span>
                 </div>
               ) : (
                 <div className="min-w-0">
-                  <span className="block text-sm font-semibold tracking-tight">Where do you want to go?</span>
+                  <span className="block text-sm font-semibold tracking-tight">{t('region.title')}</span>
                   <span className="block truncate text-2xs text-muted">
-                    {DESTINATIONS.length} destinations from Singapore
+                    {t('region.destinations', { count: DESTINATIONS.length })}
                   </span>
                 </div>
               )
@@ -179,17 +202,22 @@ export default function RegionExplorer() {
  * identity, one line of context, no navigation.
  */
 function TopBar() {
+  const t = useT();
   return (
     <header className="surface-blur relative z-[520] flex shrink-0 items-center gap-3 border-b border-line/80 px-4 py-2">
       <Link href="/" className="flex items-baseline gap-2.5">
-        <span className="text-[13px] font-semibold uppercase tracking-[0.22em] text-ink">Meridian</span>
+        <span className="text-[13px] font-semibold uppercase tracking-[0.22em] text-ink">
+          {t('app.name')}
+        </span>
         <span className="hidden text-[11.5px] tracking-tight text-muted sm:inline">
-          Southeast Asia Travel Planner
+          {t('app.tagline')}
         </span>
       </Link>
       <div className="ml-auto flex items-center gap-1.5">
-        <span className="text-[11px] tracking-tight text-muted">
-          Departing <span className="font-semibold text-ink-soft">{SINGAPORE_ORIGIN.airports[0].code}</span>
+        <LanguageSwitcher compact />
+        <span className="ml-1 hidden text-[11px] tracking-tight text-muted sm:inline">
+          {t('region.originLabel')}{' '}
+          <span className="font-semibold text-ink-soft">{SINGAPORE_ORIGIN.airports[0].code}</span>
         </span>
         {/*
           Data provenance lives behind a small affordance rather than in the
@@ -197,31 +225,25 @@ function TopBar() {
           about what is curated and what is not belongs one click away.
         */}
         <Popover
-          ariaLabel="About this data"
+          ariaLabel={t('region.dataSources')}
           align="end"
           panelClassName="w-[320px] p-3.5"
           trigger={({ toggle }) => (
             <button
               type="button"
               onClick={toggle}
-              aria-label="About this data"
+              aria-label={t('region.dataSources')}
               className="btn-ghost btn-xs -mr-1 px-1.5 text-faint hover:text-ink-soft"
             >
               <IconInfo size={14} />
             </button>
           )}
         >
-          <p className="label-caps">About this data</p>
+          <p className="label-caps">{t('region.dataSources')}</p>
           <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-soft">
-            Destinations, areas and places are curated static data. Geographic coordinates were verified
-            against published sources, and anything that could not be verified to a specific point is
-            marked <span className="font-medium text-ink">approximate</span> on its detail card.
+            {t('region.dataSourcesBody')}
           </p>
-          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
-            Flight durations and carriers are sample schedule data, not live availability. No fares,
-            nightly rates or availability are shown anywhere — we have no pricing source and will not
-            invent one.
-          </p>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{t('region.dataSourcesNote')}</p>
         </Popover>
       </div>
     </header>
@@ -249,6 +271,7 @@ function DestinationRail({
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
 }) {
+  const t = useT();
   return (
     <div className="panel flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="destination-rail">
       <div className="shrink-0 px-3 pb-2.5 pt-3">
@@ -258,8 +281,8 @@ function DestinationRail({
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Where do you want to go?"
-            aria-label="Search destinations"
+            placeholder={t('region.searchPlaceholder')}
+            aria-label={t('filter.search')}
             className="w-full rounded-lg border border-line bg-surface-warm py-2 pl-8 pr-3 text-[13px] text-ink placeholder:text-faint transition-colors duration-150 focus:border-accent/40 focus:bg-surface focus:outline-none focus:ring-[3px] focus:ring-accent/[0.09]"
           />
         </label>
@@ -278,7 +301,7 @@ function DestinationRail({
                   : 'border-line bg-surface text-ink-soft hover:border-line-strong',
               )}
             >
-              {option.label}
+              {t(option.label)}
             </button>
           ))}
         </div>
@@ -287,8 +310,8 @@ function DestinationRail({
       <div className="scroll-area min-h-0 flex-1 px-1.5 pb-2">
         {destinations.length === 0 ? (
           <EmptyState
-            title="Nothing matches"
-            body="Try a different spelling, or clear the filters to see every destination."
+            title={t('filter.noResults')}
+            body={t('region.emptyHint')}
             action={
               <button
                 type="button"
@@ -298,7 +321,7 @@ function DestinationRail({
                   onFilterChange('all');
                 }}
               >
-                Clear filters
+                {t('region.clearFilters')}
               </button>
             }
           />
@@ -339,6 +362,8 @@ function DestinationRow({
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
 }) {
+  const t = useT();
+  const name = useName();
   const route = primaryRouteSummary(destination);
   // A single typical block time. The full range is on the preview card — a
   // range in the rail pushed the country line into an ellipsis for no gain.
@@ -363,14 +388,14 @@ function DestinationRow({
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14.5px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-          {destination.name}
+          {name.primary(destination)}
         </span>
         <span className="mt-[3px] block truncate text-[12px] leading-tight text-muted">
           {destination.country}
           <span className="mx-1.5 text-line-strong" aria-hidden="true">
             ·
           </span>
-          {formatStayRange(destination.recommendedDays)}
+          {stayRangeLabel(t, destination.recommendedDays)}
         </span>
       </span>
       <span className="shrink-0 text-right">
@@ -383,7 +408,7 @@ function DestinationRow({
             route.direct ? 'font-medium text-accent' : 'text-faint',
           )}
         >
-          {route.direct ? 'Direct' : '1 stop'}
+          {route.direct ? t('region.direct') : t('region.oneStop')}
         </span>
       </span>
       <IconArrowRight

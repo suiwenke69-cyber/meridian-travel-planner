@@ -1,4 +1,4 @@
-import type { ItineraryItem, TransportMode } from '../types';
+import type { ItineraryItem, TransportMode, TransportRationaleKey } from '../types';
 
 /**
  * Transport RECOMMENDATION, deliberately separate from ROUTING.
@@ -32,7 +32,17 @@ export interface RecommendationInput {
 export interface Recommendation {
   mode: TransportMode;
   alternatives: TransportMode[];
+  /**
+   * English sentence, for the `en` locale.
+   *
+   * The reasoning is ALSO emitted as `rationaleKey` + `rationaleParams`, and the
+   * UI prefers those — see `TransportRationaleKey`. A rationale built by
+   * concatenating an English clause around a number cannot be rendered well in
+   * Chinese, and this product's primary language is Chinese.
+   */
   rationale: string;
+  rationaleKey: TransportRationaleKey;
+  rationaleParams: Record<string, string | number>;
   multimodal?: { via: string; modes: TransportMode[] };
 }
 
@@ -70,6 +80,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
       mode: 'fast-boat',
       alternatives: ['private-car'],
       rationale: `This leg crosses open water. Take a car to ${via}, then a fast boat across. Boat timetables are seasonal and not modelled here.`,
+      rationaleKey: 'water-crossing',
+      rationaleParams: { via },
       multimodal: { via, modes: ['private-car', 'fast-boat'] },
     };
   }
@@ -83,6 +95,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
       mode: 'private-car',
       alternatives: ['taxi', 'grab'],
       rationale: `Airport transfer with luggage — about ${km.toFixed(0)} km by ${basis}. A pre-booked private car is the least stressful option at Ngurah Rai.`,
+      rationaleKey: 'airport-transfer',
+      rationaleParams: { km: km.toFixed(0), measured: measured ? 1 : 0 },
     };
   }
 
@@ -92,6 +106,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
       mode: 'walk',
       alternatives: ['grab'],
       rationale: `Under ${Math.max(1, Math.round(km * 1000))} m by ${basis} — walking is realistically quicker than finding a driver.`,
+      rationaleKey: 'walkable',
+      rationaleParams: { metres: Math.max(1, Math.round(km * 1000)), measured: measured ? 1 : 0 },
     };
   }
 
@@ -100,6 +116,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
       mode: 'grab',
       alternatives: ['taxi', 'scooter'],
       rationale: `About ${km.toFixed(1)} km by ${basis}. A ride-hailing car is cheapest and easiest for this distance in Bali.`,
+      rationaleKey: 'short-hop',
+      rationaleParams: { km: km.toFixed(1), measured: measured ? 1 : 0 },
     };
   }
 
@@ -108,6 +126,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
       mode: 'grab',
       alternatives: ['private-car', 'taxi'],
       rationale: `About ${km.toFixed(0)} km by ${basis}. Ride-hailing works, though drivers sometimes decline long pickups at peak times — a private car is the safer fallback.`,
+      rationaleKey: 'long-pickup',
+      rationaleParams: { km: km.toFixed(0), measured: measured ? 1 : 0 },
     };
   }
 
@@ -115,6 +135,8 @@ export function recommendTransport(input: RecommendationInput): Recommendation {
     mode: 'private-car',
     alternatives: ['grab'],
     rationale: `About ${km.toFixed(0)} km by ${basis} — a cross-island leg. Hiring a car and driver for the day is usually cheaper and far more comfortable than metered trips this length.`,
+    rationaleKey: 'cross-island',
+    rationaleParams: { km: km.toFixed(0), measured: measured ? 1 : 0 },
   };
 }
 

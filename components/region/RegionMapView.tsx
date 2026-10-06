@@ -10,6 +10,7 @@ import RegionArcLayer from '../map/RegionArcLayer';
 import DestinationLayer, { type DestinationFeature } from '../map/DestinationLayer';
 import { originVisual } from '../map/marker-icons';
 import { useIsDesktop } from '@/lib/hooks';
+import { useName, useT } from '@/lib/i18n/use-t';
 
 /** Vertical space the collapsed/half/full sheet takes out of the visible map. */
 const SHEET_PADDING = { peek: 190, half: 470, full: 780 } as const;
@@ -42,6 +43,8 @@ export default function RegionMapView({
   // The destination rail covers the western third of the map on desktop, so the
   // geography is fitted to the area the user can actually see.
   const isDesktop = useIsDesktop();
+  const t = useT();
+  const name = useName();
 
   /**
    * Region framing is derived from the data, never hard-coded.
@@ -74,19 +77,19 @@ export default function RegionMapView({
         const duration = airport?.flightMinutes
           ? formatMinutes((airport.flightMinutes.min + airport.flightMinutes.max) / 2)
           : null;
-        const meta = [duration, direct ? 'Direct' : 'Connection']
+        const meta = [duration, direct ? t('region.direct') : t('region.oneStop')]
           .filter(Boolean)
           .join(' · ');
         return {
           id: destination.id,
-          name: destination.name,
+          name: name.primary(destination),
           country: destination.country,
           meta,
           lat: destination.coordinates.lat,
           lng: destination.coordinates.lng,
         };
       }),
-    [destinations],
+    [destinations, t, name],
   );
 
   const originMarker = useMemo<MapMarker>(
@@ -95,12 +98,12 @@ export default function RegionMapView({
       lat: SINGAPORE_ORIGIN.coordinates.lat,
       lng: SINGAPORE_ORIGIN.coordinates.lng,
       layer: 'airport',
-      label: 'Singapore — home and origin',
+      label: t('region.homeAndOrigin'),
       custom: originVisual(false),
       noTooltip: true,
       zIndexOffset: 1200,
     }),
-    [],
+    [t],
   );
 
   const selectedTarget = useMemo(() => {
@@ -133,7 +136,7 @@ export default function RegionMapView({
        */
       fitPaddingBottom={isDesktop ? 0 : SHEET_PADDING[sheetSnap]}
       fitMaxZoom={6.6}
-      ariaLabel="Map of Southeast Asia showing destinations reachable from Singapore"
+      ariaLabel={t('region.mapAria')}
       zoomControlPosition="bottom-right"
       onBackgroundClick={onBackgroundClick}
     >

@@ -11,6 +11,9 @@ import { hydrateTripStore, useTripStore } from '@/lib/store/trip-store';
 import { hydrateUiStore, useUiStore, type PanelTab } from '@/lib/store/ui-store';
 import { useIsDesktop } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
+import { useT, useName } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
+import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
 import { ImageFrame } from '../ui/ImageFrame';
 import { IconArrowLeft, IconInfo } from '../ui/icons';
@@ -81,6 +84,8 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip?.id, activeTripId]);
 
+  const t = useT();
+  const name = useName();
   const tab = useUiStore((s) => s.panelTab);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
   const selectedDayId = useUiStore((s) => s.selectedDayId);
@@ -194,43 +199,43 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
             showDisclosure={false}
           />
           <div className="min-w-0">
-            <h1 className="truncate text-[14.5px] font-semibold leading-tight tracking-[-0.01em]">{destination.name}</h1>
+            <h1 className="truncate text-[14.5px] font-semibold leading-tight tracking-[-0.01em]">
+              {name.primary(destination)}
+            </h1>
             <p className="hidden truncate text-[11px] text-muted sm:block">
-              {destination.country}
+              {t(`country.${destination.region === 'indonesia' ? 'indonesia' : destination.country.toLowerCase()}` as MessageKey) ||
+                destination.country}
               <span className="mx-1.5 text-line-strong" aria-hidden="true">
                 ·
               </span>
-              {stats.placeCount} places mapped
+              {t('dest.placesMapped', { count: stats.placeCount })}
             </p>
           </div>
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <LanguageSwitcher compact />
           {trip && (
             <span className="hidden whitespace-nowrap text-[11px] text-muted md:inline">
-              {trip.days.length} days · {trip.days.reduce((n, d) => n + d.items.length, 0)} stops
+              {t('dest.tripSummary', {
+                days: trip.days.length,
+                stops: trip.days.reduce((n, d) => n + d.items.length, 0),
+              })}
             </span>
           )}
           <Popover
-            ariaLabel="About this destination data"
+            ariaLabel={t('misc.infoTitle')}
             align="end"
             panelClassName="w-[320px] p-3.5"
             trigger={({ toggle }) => (
-              <button type="button" onClick={toggle} aria-label="About this data" className="btn-ghost btn-xs px-1.5 text-faint hover:text-ink-soft">
+              <button type="button" onClick={toggle} aria-label={t('misc.infoTitle')} className="btn-ghost btn-xs px-1.5 text-faint hover:text-ink-soft">
                 <IconInfo size={14} />
               </button>
             )}
           >
-            <p className="label-caps">About this data</p>
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-soft">
-              Coordinates were verified against published sources; anything that could not be verified to a
-              specific point is marked approximate on its card. Photography is from Wikimedia Commons with
-              licence and author credited on each image.
-            </p>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
-              Hotel cost is a positioning tier, never a nightly rate. Transport legs come from a routing engine
-              or are shown as unavailable — nothing is estimated silently.
-            </p>
+            <p className="label-caps">{t('misc.infoTitle')}</p>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-soft">{t('misc.infoCoords')}</p>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{t('misc.infoPrice')}</p>
           </Popover>
         </div>
       </header>
@@ -264,12 +269,14 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
           snap={snap}
           onSnapChange={setSnap}
           peekHeight={132}
-          ariaLabel="Destination explorer"
+          ariaLabel={t(DESTINATION_TABS.find((entry) => entry.id === tab)?.hint ?? 'tab.explore')}
           header={
             <div className="flex min-w-0 items-center justify-between gap-3">
               <span className="min-w-0">
-                <span className="block truncate text-[13.5px] font-semibold">{DESTINATION_TABS.find((t) => t.id === tab)?.label}</span>
-                <span className="block truncate text-[11px] text-muted">{destination.name}</span>
+                <span className="block truncate text-[13.5px] font-semibold">
+                  {t(DESTINATION_TABS.find((entry) => entry.id === tab)?.label ?? 'tab.explore')}
+                </span>
+                <span className="block truncate text-[11px] text-muted">{name.primary(destination)}</span>
               </span>
             </div>
           }
@@ -288,11 +295,16 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
 
 // ---------------------------------------------------------------------------
 
-const DESTINATION_TABS: Array<{ id: PanelTab; label: string; hint: string }> = [
-  { id: 'explore', label: 'Explore', hint: 'Understand the island and its regions' },
-  { id: 'stay', label: 'Stay', hint: 'Marriott Bonvoy and Hilton Honors properties' },
-  { id: 'do', label: 'Do', hint: 'Beaches, nature, culture, food and nightlife' },
-  { id: 'plan', label: 'Plan', hint: 'Your itinerary, with transport between stops' },
+/**
+ * The four steps, as message keys rather than strings — this array is read in
+ * several places (the tab bar, the mobile sheet header, the itinerary empty
+ * state) and a hard-coded label here would leave one of them in English.
+ */
+const DESTINATION_TABS: Array<{ id: PanelTab; label: MessageKey; hint: MessageKey }> = [
+  { id: 'explore', label: 'tab.explore', hint: 'tab.exploreHint' },
+  { id: 'stay', label: 'tab.stay', hint: 'tab.stayHint' },
+  { id: 'do', label: 'tab.do', hint: 'tab.doHint' },
+  { id: 'plan', label: 'tab.plan', hint: 'tab.planHint' },
 ];
 
 function DestinationPanel({
@@ -340,9 +352,10 @@ function DestinationPanel({
   onHoverEntity: (id: string | null) => void;
   onSelectDay: (dayId: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <nav className="shrink-0 border-b border-line px-2 pb-2 pt-2" aria-label="Destination sections">
+      <nav className="shrink-0 border-b border-line px-2 pb-2 pt-2" aria-label={t('explore.scopeLabel')}>
         <div className="grid grid-cols-4 gap-1">
           {DESTINATION_TABS.map((item) => {
             const active = tab === item.id;
@@ -352,7 +365,7 @@ function DestinationPanel({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                title={item.hint}
+                title={t(item.hint)}
                 onClick={() => useUiStore.getState().setPanelTab(item.id)}
                 data-testid={`dest-tab-${item.id}`}
                 className={cn(
@@ -360,7 +373,7 @@ function DestinationPanel({
                   active ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-black/[0.03] hover:text-ink-soft',
                 )}
               >
-                {item.label}
+                {t(item.label)}
               </button>
             );
           })}

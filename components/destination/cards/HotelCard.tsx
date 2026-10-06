@@ -1,18 +1,43 @@
 'use client';
 
-import type { Hotel } from '@/lib/types';
+import type { Hotel, HotelStyle } from '@/lib/types';
 import { heroImage, imagesByRole } from '@/lib/images';
 import { getHotelBrand } from '@/lib/data/hotel-brands';
+import { useName, useT } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
 import { cn } from '@/lib/utils';
 import { ImageFrame } from '../../ui/ImageFrame';
 import { AddToTripButton } from '../AddToTripButton';
 import { IconCameraOff } from '../../ui/icons';
 
-const BEACH_LABEL: Record<Hotel['beachAccess'], string> = {
-  excellent: 'Beachfront',
-  good: 'Near the beach',
-  limited: 'Beach nearby',
-  none: 'No beach',
+/**
+ * Generic property types are copy, not brands, so they are authored per locale.
+ * Brand names (St. Regis, W, Conrad) stay Latin: they are what a traveller
+ * searches for in a map or booking app.
+ */
+const PROPERTY_TYPE_KEY: Record<Hotel['propertyType'], MessageKey> = {
+  'Luxury Resort': 'propertyType.luxury-resort',
+  Resort: 'propertyType.resort',
+  'Beach Resort': 'propertyType.beach-resort',
+  'Villa Resort': 'propertyType.villa-resort',
+  'City Hotel': 'propertyType.city-hotel',
+  'Boutique Hotel': 'propertyType.boutique-hotel',
+};
+
+const STYLE_KEY: Record<HotelStyle, MessageKey> = {
+  Beach: 'style.beach',
+  Luxury: 'style.luxury',
+  Food: 'style.food',
+  Nature: 'style.nature',
+  Nightlife: 'style.nightlife',
+  Diving: 'style.diving',
+  Surfing: 'style.surfing',
+  Culture: 'style.culture',
+  Couple: 'style.couple',
+  Friends: 'style.friends',
+  Family: 'style.family',
+  Resort: 'style.resort',
+  City: 'style.city',
 };
 
 /**
@@ -44,6 +69,9 @@ export function HotelCard({
   const brand = getHotelBrand(hotel.brandId);
   const isMarriott = hotel.hotelGroup === 'marriott';
   const hasPropertyPhotography = Boolean(image);
+  const t = useT();
+  const name = useName();
+  const canonicalName = name.secondary(hotel);
 
   return (
     <article
@@ -63,17 +91,17 @@ export function HotelCard({
             variant="card"
             sizes="(max-width: 1023px) 100vw, 380px"
             showCredit
-            fallbackLabel="No property photography available"
+            fallbackLabel={t('stay.noPhotographyLong')}
             fallbackTone="area"
           />
           {gallery.length > 0 && (
             <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur">
-              {gallery.length + 1} photos
+              {t('stay.photoCount', { count: gallery.length + 1 })}
             </span>
           )}
           {inTrip && (
             <span className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-              In trip
+              {t('do.inTrip')}
             </span>
           )}
         </div>
@@ -83,11 +111,11 @@ export function HotelCard({
               <IconCameraOff size={14} />
             </span>
             <span className="text-[10.5px] leading-tight text-muted">
-              No property photography available for this hotel
+              {t('stay.noPhotographyLong')}
             </span>
             {inTrip && (
               <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                In trip
+                {t('do.inTrip')}
               </span>
             )}
           </div>
@@ -105,8 +133,18 @@ export function HotelCard({
               {isMarriott ? 'M' : 'H'}
             </span>
             <div className="min-w-0 flex-1">
-              <h3 className="text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-ink">{hotel.name}</h3>
+              <h3 className="text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+                {name.primary(hotel)}
+              </h3>
               <p className="mt-0.5 text-[11.5px] leading-snug text-muted">
+                {canonicalName && (
+                  <>
+                    {canonicalName}
+                    <span className="mx-1.5 text-line-strong" aria-hidden="true">
+                      ·
+                    </span>
+                  </>
+                )}
                 {areaName}
                 <span className="mx-1.5 text-line-strong" aria-hidden="true">
                   ·
@@ -120,21 +158,30 @@ export function HotelCard({
           </div>
 
           <p className="mt-2 text-[11.5px] leading-snug text-ink-soft">
-            {hotel.propertyType}
+            {t(PROPERTY_TYPE_KEY[hotel.propertyType])}
             <span className="mx-1.5 text-line-strong" aria-hidden="true">
               ·
             </span>
-            {BEACH_LABEL[hotel.beachAccess]}
+            {t(`beachAccess.${hotel.beachAccess}` as MessageKey)}
             <span className="mx-1.5 text-line-strong" aria-hidden="true">
               ·
             </span>
-            ≈{hotel.airportTransfer.minutesMin}–{hotel.airportTransfer.minutesMax} min DPS
+            {t('unit.minutesFromAirport', {
+              code: 'DPS',
+              min: hotel.airportTransfer.minutesMin,
+              max: hotel.airportTransfer.minutesMax,
+            })}
           </p>
         </div>
       </button>
 
       <div className="flex items-center justify-between gap-2 px-3.5 pb-3">
-        <span className="truncate text-[11px] text-faint">{hotel.tags.slice(0, 3).join(' · ')}</span>
+        <span className="truncate text-[11px] text-faint">
+          {hotel.tags
+            .slice(0, 3)
+            .map((tag) => t(STYLE_KEY[tag]))
+            .join(' · ')}
+        </span>
         <AddToTripButton destinationId={destinationId} refId={hotel.id} size="sm" />
       </div>
     </article>

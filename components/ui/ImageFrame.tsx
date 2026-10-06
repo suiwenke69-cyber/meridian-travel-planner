@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { PlaceImage } from '@/lib/types';
-import { imageDisclosure } from '@/lib/images';
+import { useT } from '@/lib/i18n/use-t';
 import { cn } from '@/lib/utils';
 import { IconCameraOff, IconMapPin } from './icons';
 
@@ -52,8 +52,18 @@ export function ImageFrame({
   fallbackTone?: 'neutral' | 'area';
 }) {
   const [failed, setFailed] = useState(false);
+  const t = useT();
   const usable = image && !failed;
-  const disclosure = showDisclosure && image ? imageDisclosure(image) : null;
+  // A photo that is not of the entity itself must say so. The label is authored
+  // per locale rather than derived from `imageDisclosure`, which only has English.
+  const disclosure =
+    showDisclosure && image
+      ? image.subject === 'subject'
+        ? null
+        : image.subject === 'area'
+          ? t('image.areaPhoto')
+          : t('image.representative')
+      : null;
 
   return (
     <figure className={cn('relative overflow-hidden bg-paper-warm', VARIANT_CLASS[variant], className)}>
@@ -79,7 +89,7 @@ export function ImageFrame({
           )}
           {showCredit && usable && (
             <span className="mt-0.5 block truncate text-[9.5px] leading-tight text-white/60">
-              {image.source.author} · {image.source.license}
+              {t('image.credit', { author: image.source.author, license: image.source.license })}
             </span>
           )}
         </figcaption>
@@ -106,8 +116,12 @@ function Placeholder({
    * A hotel with no verified photography must not borrow its area's image —
    * that implies a beach is the property. This state says so plainly and still
    * looks intentional rather than broken.
+   *
+   * The label is already localized by the caller, so the test matches both
+   * languages: in zh-CN the absence copy carries 暂无…照片 rather than "no photo".
    */
-  const isAbsence = /no .*photography|no photo/i.test(label ?? '');
+  const t = useT();
+  const isAbsence = /no .*photography|no photo|暂无.*照片/i.test(label ?? '');
   return (
     <div
       className={cn(
@@ -132,7 +146,7 @@ function Placeholder({
             tone === 'area' ? 'text-muted' : 'text-faint',
           )}
         >
-          {label ?? 'No photo yet'}
+          {label ?? t('image.noPhoto')}
         </span>
       )}
     </div>

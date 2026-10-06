@@ -7,6 +7,7 @@ import { useTripStore } from '@/lib/store/trip-store';
 import { isRefInTrip } from '@/lib/trip';
 import { HotelCard } from '../cards/HotelCard';
 import { EmptyState } from '../../ui/primitives';
+import { useT } from '@/lib/i18n/use-t';
 
 type GroupFilter = 'all' | HotelGroupId;
 
@@ -36,6 +37,7 @@ export function StayPanel({
   selectedHotelId: string | null;
   onClearArea: () => void;
 }) {
+  const t = useT();
   const [group, setGroup] = useState<GroupFilter>('all');
   const trip = useTripStore((s) => {
     const active = s.trips.find((t) => t.id === s.activeTripId);
@@ -69,11 +71,9 @@ export function StayPanel({
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
-        <h2 className="text-[19px] font-semibold tracking-[-0.015em]">Where to stay</h2>
+        <h2 className="text-[19px] font-semibold tracking-[-0.015em]">{t('stay.title')}</h2>
         <p className="mt-1 text-[12px] leading-relaxed text-muted">
-          {focusedAreaName
-            ? `Marriott Bonvoy and Hilton Honors properties in ${focusedAreaName}.`
-            : 'Every Marriott Bonvoy and Hilton Honors property we hold for Bali. Properties with photography come first.'}
+          {focusedAreaName ? t('stay.subtitleInArea', { area: focusedAreaName }) : t('stay.subtitleAll')}
         </p>
 
         {focusedAreaName && (
@@ -85,16 +85,16 @@ export function StayPanel({
           >
             {focusedAreaName}
             <span aria-hidden="true">×</span>
-            <span className="sr-only">Clear area filter</span>
+            <span className="sr-only">{t('stay.clearArea')}</span>
           </button>
         )}
 
         <div className="mt-2.5 flex flex-wrap gap-1">
           {(
             [
-              ['all', 'All', hotels.length],
-              ['marriott', 'Marriott', marriottCount],
-              ['hilton', 'Hilton', hiltonCount],
+              ['all', t('stay.filterAll'), hotels.length],
+              ['marriott', t('stay.filterMarriott'), marriottCount],
+              ['hilton', t('stay.filterHilton'), hiltonCount],
             ] as Array<[GroupFilter, string, number]>
           ).map(([id, label, count]) => (
             <button
@@ -126,16 +126,16 @@ export function StayPanel({
       <div className="scroll-area min-h-0 flex-1 space-y-3 p-3">
         {scoped.length === 0 ? (
           <EmptyState
-            title="No properties match"
+            title={t('stay.emptyTitle')}
             body={
               focusedAreaName
-                ? `Neither loyalty programme has a property we could verify in ${focusedAreaName}, and this planner only lists hotels it could confirm. Across the rest of the island we hold ${destinationTotals}.`
-                : 'Try a different loyalty filter.'
+                ? t('stay.emptyInArea', { area: focusedAreaName, total: destinationTotals })
+                : t('stay.emptyFilter')
             }
             action={
               focusedAreaName ? (
                 <button type="button" className="btn-secondary btn-xs" onClick={onClearArea} data-testid="stay-clear-area">
-                  Show all of Bali
+                  {t('stay.showAllIsland')}
                 </button>
               ) : undefined
             }

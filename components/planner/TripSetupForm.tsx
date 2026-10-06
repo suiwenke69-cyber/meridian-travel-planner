@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import type { Destination, LoyaltyProgrammeId, PriceTier, TravelStyle, Trip } from '@/lib/types';
-import { formatDaysNights, formatDateLong, inclusiveDayCount, nightCount } from '@/lib/date';
+import { formatDateLong, inclusiveDayCount, nightCount } from '@/lib/date';
 import { MAX_TRIP_DAYS, createTrip } from '@/lib/trip';
-import { PRICE_TIERS, PRICE_TIER_LABELS } from '@/lib/filters';
+import { PRICE_TIERS } from '@/lib/filters';
+import { useName, useT } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
 import { cn } from '@/lib/utils';
 import { useTripStore } from '@/lib/store/trip-store';
 import { useUiStore } from '@/lib/store/ui-store';
@@ -29,6 +31,27 @@ const LOYALTY: Array<{ id: LoyaltyProgrammeId; label: string }> = [
   { id: 'marriott-bonvoy', label: 'Marriott Bonvoy' },
   { id: 'hilton-honors', label: 'Hilton Honors' },
 ];
+
+const STYLE_KEY: Record<TravelStyle, MessageKey> = {
+  Beach: 'style.beach',
+  Luxury: 'style.luxury',
+  Food: 'style.food',
+  Nature: 'style.nature',
+  Nightlife: 'style.nightlife',
+  Diving: 'style.diving',
+  Surfing: 'style.surfing',
+  Culture: 'style.culture',
+  Couple: 'style.couple',
+  Friends: 'style.friends',
+  Family: 'style.family',
+};
+
+const PRICE_TIER_KEY: Record<PriceTier, MessageKey> = {
+  $: 'priceTier.budget',
+  $$: 'priceTier.mid',
+  $$$: 'priceTier.upscale',
+  $$$$: 'priceTier.luxury',
+};
 
 /** Today + n days, formatted for `<input type="date">`. */
 function isoOffset(days: number): string {
@@ -55,6 +78,9 @@ export function TripSetupForm({
   const updateTripMeta = useTripStore((s) => s.updateTripMeta);
   const deleteTrip = useTripStore((s) => s.deleteTrip);
   const selectDay = useUiStore((s) => s.selectDay);
+  const t = useT();
+  const name = useName();
+  const destinationName = name.primary(destination);
 
   const [arrival, setArrival] = useState(trip?.arrivalDate ?? isoOffset(30));
   const [departure, setDeparture] = useState(
@@ -94,19 +120,17 @@ export function TripSetupForm({
     <div className="scroll-area h-full p-3">
       <header className="mb-3">
         <h2 className="text-[19px] font-semibold tracking-[-0.015em]">
-          {trip ? 'Trip dates' : `Plan a trip to ${destination.name}`}
+          {trip ? t('setup.editTitle') : t('setup.planTripTo', { destination: destinationName })}
         </h2>
         <p className="mt-1 text-[12px] leading-relaxed text-muted">
-          {trip
-            ? 'Changing the dates keeps as much of your plan as possible.'
-            : 'Three fields, then you are planning. Dates generate the days that everything else is added to.'}
+          {trip ? t('setup.editHint') : t('setup.newHint')}
         </p>
       </header>
 
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
-            <span className="label-caps">Arrival</span>
+            <span className="label-caps">{t('plan.arrival')}</span>
             <input
               type="date"
               value={arrival}
@@ -116,7 +140,7 @@ export function TripSetupForm({
             />
           </label>
           <label className="block">
-            <span className="label-caps">Departure</span>
+            <span className="label-caps">{t('plan.departure')}</span>
             <input
               type="date"
               value={departure}
@@ -135,17 +159,27 @@ export function TripSetupForm({
         >
           <IconCalendar size={13} className="shrink-0" />
           {invalid ? (
-            <span>Departure must be on or after arrival.</span>
+            <span>{t('setup.dateOrder')}</span>
           ) : tooLong ? (
-            <span>That is {dayCount} days. This planner caps a trip at {MAX_TRIP_DAYS} days.</span>
+            <span>{t('setup.tooLong', { days: dayCount, max: MAX_TRIP_DAYS })}</span>
           ) : (
             <span>
-              <strong className="text-ink">{formatDaysNights(dayCount, nights)}</strong> · {dayCount} days will be
-              generated · {formatDateLong(arrival)} → {formatDateLong(departure)}
+              <strong className="text-ink">{t('setup.tripLength', { days: dayCount, nights })}</strong>
+              {' · '}
+              {t('setup.daysGenerated', { count: dayCount })}
+              {' · '}
+              {formatDateLong(arrival)} → {formatDateLong(departure)}
               {dayCount !== destination.recommendedDays.ideal && (
                 <>
                   {' '}
-                  · we suggest {formatDaysNights(destination.recommendedDays.ideal)} for {destination.name}
+                  ·{' '}
+                  {t('setup.suggestedFor', {
+                    destination: destinationName,
+                    days: t('setup.tripLength', {
+                      days: destination.recommendedDays.ideal,
+                      nights: Math.max(0, destination.recommendedDays.ideal - 1),
+                    }),
+                  })}
                 </>
               )}
             </span>
@@ -153,7 +187,7 @@ export function TripSetupForm({
         </div>
 
         <label className="block">
-          <span className="label-caps">Travellers</span>
+          <span className="label-caps">{t('setup.travellers')}</span>
           <div className="mt-1 flex items-center gap-2">
             <IconUsers size={15} className="text-muted" />
             <input
@@ -165,7 +199,7 @@ export function TripSetupForm({
               data-testid="travellers"
               className="w-20 rounded-lg border border-line bg-surface px-2.5 py-2 text-xs focus:border-accent focus:outline-none"
             />
-            <span className="text-2xs text-muted">people</span>
+            <span className="text-2xs text-muted">{t('setup.people')}</span>
           </div>
         </label>
 
@@ -176,18 +210,16 @@ export function TripSetupForm({
           aria-expanded={showPreferences}
         >
           <span>
-            <span className="block text-[12.5px] font-semibold text-ink">Trip preferences</span>
-            <span className="block text-[11px] text-muted">
-              Travel style, budget tier and loyalty programmes — all optional
-            </span>
+            <span className="block text-[12.5px] font-semibold text-ink">{t('plan.preferences')}</span>
+            <span className="block text-[11px] text-muted">{t('setup.optionalHint')}</span>
           </span>
-          <span className="text-[11px] text-muted">{showPreferences ? 'Hide' : 'Show'}</span>
+          <span className="text-[11px] text-muted">{showPreferences ? t('setup.hide') : t('setup.show')}</span>
         </button>
 
         {showPreferences && (
         <>
         <fieldset>
-          <legend className="label-caps mb-1.5">Travel style (optional)</legend>
+          <legend className="label-caps mb-1.5">{t('setup.travelStyle')}</legend>
           <div className="flex flex-wrap gap-1">
             {TRAVEL_STYLES.map((style) => {
               const active = styles.includes(style);
@@ -204,26 +236,23 @@ export function TripSetupForm({
                       : 'border-line bg-surface text-ink-soft hover:border-line-strong',
                   )}
                 >
-                  {style}
+                  {t(STYLE_KEY[style])}
                 </button>
               );
             })}
           </div>
-          <p className="mt-1.5 text-2xs leading-relaxed text-muted">
-            Travel style reorders the &ldquo;Where to stay&rdquo; panel and highlights matching hotels. It does not hide
-            anything.
-          </p>
+          <p className="mt-1.5 text-2xs leading-relaxed text-muted">{t('setup.styleNote')}</p>
         </fieldset>
 
         <fieldset>
-          <legend className="label-caps mb-1.5">Budget tier (optional)</legend>
+          <legend className="label-caps mb-1.5">{t('setup.budgetTier')}</legend>
           <div className="flex flex-wrap gap-1">
             {PRICE_TIERS.map((tier) => (
               <button
                 key={tier}
                 type="button"
                 aria-pressed={budget === tier}
-                title={PRICE_TIER_LABELS[tier]}
+                title={t(PRICE_TIER_KEY[tier])}
                 onClick={() => setBudget(budget === tier ? undefined : tier)}
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
@@ -232,14 +261,14 @@ export function TripSetupForm({
                     : 'border-line bg-surface text-ink-soft hover:border-line-strong',
                 )}
               >
-                {tier} · {PRICE_TIER_LABELS[tier]}
+                {tier} · {t(PRICE_TIER_KEY[tier])}
               </button>
             ))}
           </div>
         </fieldset>
 
         <fieldset>
-          <legend className="label-caps mb-1.5">Loyalty programmes (optional)</legend>
+          <legend className="label-caps mb-1.5">{t('setup.loyalty')}</legend>
           <div className="flex flex-wrap gap-1">
             {LOYALTY.map((programme) => {
               const active = loyalty.includes(programme.id);
@@ -263,10 +292,7 @@ export function TripSetupForm({
               );
             })}
           </div>
-          <p className="mt-1.5 text-2xs leading-relaxed text-muted">
-            Your tier is stored as data only. V1 shows no elite benefits because they change too often to state safely —
-            the field exists so a benefits comparison can be added later without a migration.
-          </p>
+          <p className="mt-1.5 text-2xs leading-relaxed text-muted">{t('setup.loyaltyNote')}</p>
         </fieldset>
 
         </>
@@ -283,12 +309,12 @@ export function TripSetupForm({
             {trip ? (
               <>
                 <IconCheck size={16} />
-                Save changes
+                {t('setup.updateTrip')}
               </>
             ) : (
               <>
                 <IconPlus size={16} />
-                Start planning · {dayCount} days
+                {t('plan.createTrip', { days: dayCount })}
               </>
             )}
           </button>
@@ -300,7 +326,7 @@ export function TripSetupForm({
                 deleteTrip(trip.id);
                 onDone?.();
               }}
-              aria-label="Delete this trip"
+              aria-label={t('setup.deleteTrip')}
             >
               <IconTrash size={16} />
             </button>
@@ -308,8 +334,8 @@ export function TripSetupForm({
         </div>
 
         <div className="flex flex-wrap gap-1 pt-1">
-          <Tag tone="muted">Saved to this browser only</Tag>
-          <Tag tone="muted">No account needed</Tag>
+          <Tag tone="muted">{t('setup.savedLocally')}</Tag>
+          <Tag tone="muted">{t('setup.noAccount')}</Tag>
         </div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 'use client';
 
 import type { TransportLeg, TransportMode } from '@/lib/types';
-import { formatKm, formatMinutes } from '@/lib/geo';
-import { modeLabel } from '@/lib/transport/recommend';
+import { useT, type Translator } from '@/lib/i18n/use-t';
+import type { MessageKey } from '@/lib/i18n/messages';
 import { cn } from '@/lib/utils';
 import { IconAlert } from '../ui/icons';
 
@@ -34,6 +34,7 @@ export function TransportLegRow({
 }) {
   const unavailable = leg.source === 'unavailable';
   const multimodal = leg.multimodal;
+  const t = useT();
 
   return (
     <div className="relative flex gap-2 pl-[52px] pr-1" data-testid={`transport-leg-${leg.id}`}>
@@ -58,26 +59,28 @@ export function TransportLegRow({
           <span aria-hidden="true" className="text-[14px] leading-none">
             {MODE_GLYPH[leg.mode]}
           </span>
-          <span className="text-[12.5px] font-semibold tracking-[-0.005em] text-ink">{MODE_TITLE[leg.mode]}</span>
+          <span className="text-[12.5px] font-semibold tracking-[-0.005em] text-ink">
+            {t(`mode.${leg.mode}.title` as MessageKey)}
+          </span>
           {!unavailable && (
             <>
               <span className="text-line-strong" aria-hidden="true">
                 ·
               </span>
               <span className="text-[12.5px] font-medium tabular-nums text-ink-soft">
-                ≈{formatMinutes((leg.durationSeconds ?? 0) / 60)}
+                ≈{formatDuration(t, (leg.durationSeconds ?? 0) / 60)}
               </span>
               <span className="text-line-strong" aria-hidden="true">
                 ·
               </span>
               <span className="text-[12.5px] tabular-nums text-ink-soft">
-                {formatKm((leg.distanceMeters ?? 0) / 1000)}
+                {formatDistance(t, (leg.distanceMeters ?? 0) / 1000)}
               </span>
             </>
           )}
           {multimodal && (
             <span className="rounded-full border border-accent/25 bg-white/70 px-2 py-[1px] text-[10px] font-medium text-accent">
-              two modes · via {multimodal.via}
+              {t('transport.multimodal')} · {t('transport.via', { place: multimodal.via })}
             </span>
           )}
         </span>
@@ -86,9 +89,11 @@ export function TransportLegRow({
           <span className="mt-1 flex items-start gap-1.5 text-[11.5px] leading-snug text-warn">
             <IconAlert size={12} className="mt-[2px] shrink-0" />
             <span>
-              Route unavailable — no routing service answered.{' '}
+              {t('transport.unavailableHint')}{' '}
               <span className="text-muted">
-                The straight line is {formatKm(leg.straightLineMeters / 1000)}, which is not a driving distance.
+                {t('transport.straightLineIs', {
+                  distance: formatDistance(t, leg.straightLineMeters / 1000),
+                })}
               </span>
             </span>
           </span>
@@ -99,18 +104,26 @@ export function TransportLegRow({
         <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           {unavailable ? (
             <span className="rounded-full border border-warn/30 bg-warn/[0.07] px-2 py-[1px] text-[10px] font-medium text-warn">
-              No route data
+              {t('transport.noRouteData')}
             </span>
           ) : (
             <span
               className="rounded-full border border-line bg-white/70 px-2 py-[1px] text-[10px] text-muted"
-              title="Distance and duration come from this routing engine. Traffic is not modelled, so the time is a free-flow estimate."
+              title={t('transport.sourceTitle')}
             >
-              {leg.providerId === 'osrm' ? 'OSRM road route' : (leg.providerId ?? 'routing engine')} · free-flow estimate
+              {leg.providerId === 'osrm'
+                ? t('transport.osrmSource')
+                : `${leg.providerId ?? t('transport.routingEngine')} · ${t('transport.freeFlow')}`}
             </span>
           )}
           {leg.alternatives.length > 0 && !unavailable && (
-            <span className="text-[10.5px] text-faint">or {leg.alternatives.slice(0, 2).map(modeLabel).join(' / ')}</span>
+            <span className="text-[10.5px] text-faint">
+              {t('transport.orTake')}{' '}
+              {leg.alternatives
+                .slice(0, 2)
+                .map((mode) => t(`mode.${mode}` as MessageKey))
+                .join(' / ')}
+            </span>
           )}
         </span>
       </button>
@@ -118,19 +131,23 @@ export function TransportLegRow({
   );
 }
 
-/** Names chosen to match how a traveller would say them out loud. */
-const MODE_TITLE: Record<TransportMode, string> = {
-  walk: 'Walk',
-  taxi: 'Taxi',
-  grab: 'Car / Grab',
-  'private-car': 'Private car & driver',
-  scooter: 'Scooter',
-  bus: 'Bus',
-  train: 'Train',
-  ferry: 'Ferry',
-  'fast-boat': 'Fast boat',
-  flight: 'Flight',
-};
+/**
+ * Units are localized here rather than through `lib/geo`'s formatters, which
+ * only ever return "min" and "km". Sub-kilometre distances keep the metre
+ * symbol: it is a unit, not a word, and "400 m" reads the same in both locales.
+ */
+function formatDuration(t: Translator, minutes: number): string {
+  const m = Math.round(minutes);
+  if (m < 60) return t('unit.minutes', { count: m });
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? t('unit.hours', { count: h }) : t('duration.hourMinute', { h, m: rem });
+}
+
+function formatDistance(t: Translator, km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  return t('unit.km', { value: km < 10 ? km.toFixed(1) : Math.round(km) });
+}
 
 const MODE_GLYPH: Record<TransportMode, string> = {
   walk: '🚶',
