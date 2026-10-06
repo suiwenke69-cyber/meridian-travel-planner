@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { MarkerLayer } from '../types';
+import type { Locale, MarkerLayer } from '../types';
+import { DEFAULT_LOCALE } from '../types';
 import { defaultLayerVisibility } from '../layers';
 
 /**
@@ -44,6 +45,14 @@ export interface FitRequest {
 }
 
 export interface UiStoreState {
+  /**
+   * Product language. Simplified Chinese is the default.
+   *
+   * Lives here rather than in a cookie because the site is statically exported
+   * and must not read request state. Server and first client render both use the
+   * default; a stored preference is applied after rehydration.
+   */
+  locale: Locale;
   visibleLayers: Record<MarkerLayer, boolean>;
   showAreas: boolean;
   showRoute: boolean;
@@ -73,6 +82,7 @@ export interface UiStoreState {
   focusRequest: FocusRequest | null;
   fitRequest: FitRequest | null;
 
+  setLocale: (locale: Locale) => void;
   toggleLayer: (layer: MarkerLayer) => void;
   setLayer: (layer: MarkerLayer, value: boolean) => void;
   setLayers: (layers: MarkerLayer[], value: boolean) => void;
@@ -103,6 +113,7 @@ export interface UiStoreState {
 export const useUiStore = create<UiStoreState>()(
   persist(
     (set, get) => ({
+      locale: DEFAULT_LOCALE,
       visibleLayers: defaultLayerVisibility(),
       showAreas: true,
       showRoute: true,
@@ -122,6 +133,8 @@ export const useUiStore = create<UiStoreState>()(
 
       focusRequest: null,
       fitRequest: null,
+
+      setLocale: (locale) => set({ locale }),
 
       toggleLayer: (layer) =>
         set((state) => ({ visibleLayers: { ...state.visibleLayers, [layer]: !state.visibleLayers[layer] } })),
@@ -207,6 +220,7 @@ export const useUiStore = create<UiStoreState>()(
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       partialize: (state) => ({
+        locale: state.locale,
         visibleLayers: state.visibleLayers,
         showAreas: state.showAreas,
         showRoute: state.showRoute,

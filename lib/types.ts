@@ -10,7 +10,35 @@
  *    about what is verified vs. approximate vs. demo data.
  * 3. Nothing in this file contains a price. We store *tiers*, never nightly
  *    rates, because we do not have a live pricing source in V1.
+ * 4. Every user-facing string is either a message key resolved through
+ *    `lib/i18n`, or a proper noun. Proper nouns are stored BOTH ways — the
+ *    canonical name and its Chinese rendering — because a Chinese-speaking
+ *    traveller needs to read the name and then search the same place in Google
+ *    Maps, Grab or a hotel app, which only knows the English one.
  */
+
+// ---------------------------------------------------------------------------
+// Locale
+// ---------------------------------------------------------------------------
+
+/** Simplified Chinese is the product's primary language. */
+export type Locale = 'zh-CN' | 'en';
+
+export const DEFAULT_LOCALE: Locale = 'zh-CN';
+
+/**
+ * Optional Chinese naming for a proper noun.
+ *
+ * Deliberately optional and deliberately paired: an entity with no verified
+ * Chinese name simply falls back to its canonical name rather than showing a
+ * machine translation the reader cannot search for.
+ */
+export interface LocalizedNames {
+  /** Canonical, searchable name. Never translated — it is what the map apps use. */
+  name: string;
+  /** Chinese rendering, shown first when the locale is zh-CN. */
+  nameZh?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Data provenance
@@ -103,6 +131,8 @@ export interface Area {
   id: string;
   destinationId: string;
   name: string;
+  /** Chinese name, e.g. 乌布 for Ubud. */
+  nameZh?: string;
   coordinates: Geocoded;
   /**
    * True when this is a place a traveller would actually base themselves.
@@ -123,16 +153,27 @@ export interface Area {
   radiusMeters: number;
   bestFor: string[];
   weakFor: string[];
+  /** Chinese for `bestFor`, positionally aligned; falls back when shorter. */
+  bestForZh?: string[];
+  /** Chinese for `weakFor`, positionally aligned; falls back when shorter. */
+  weakForZh?: string[];
   scores: AreaScores;
   vibe: string;
+  vibeZh?: string;
   /**
    * The two-or-three word line shown under the area name on the map and in the
    * area list, e.g. "Surf · Cafés". This is the fastest way a traveller
    * understands a region, so it is authored, not derived.
    */
   tagline: string;
+  /** Chinese tagline, e.g. 自然 · 文化 · 瑜伽. */
+  taglineZh?: string;
   summary: string;
+  /** Concise Chinese summary. Authored, not translated sentence by sentence. */
+  summaryZh?: string;
   idealFor: string[];
+  /** Chinese for `idealFor`, positionally aligned; falls back when shorter. */
+  idealForZh?: string[];
   /** Typical nightly positioning, as a tier — never a nightly price. */
   priceTier: PriceTier;
   /** Hero first, then optional supporting shots. */
@@ -142,13 +183,17 @@ export interface Area {
 export interface Destination {
   id: string;
   name: string;
+  nameZh?: string;
   country: string;
+  countryZh?: string;
   countryCode: string;
   flag: string;
   region: RegionId;
   status: DestinationStatus;
   tagline: string;
+  taglineZh?: string;
   description: string;
+  descriptionZh?: string;
   coordinates: Geocoded;
   /** Initial camera for the destination map. */
   mapView: { center: LatLngTuple; zoom: number };
@@ -375,6 +420,12 @@ export const HOTEL_STYLE_FILTERS: HotelStyle[] = [
 export interface Hotel {
   id: string;
   name: string;
+  /**
+   * Chinese name where one is in real use, e.g. 巴厘岛瑞吉度假酒店.
+   * The English name is ALWAYS shown alongside it: it is what Google Maps,
+   * Grab and the hotel's own app will recognise.
+   */
+  nameZh?: string;
   destinationId: string;
   areaId: string;
   hotelGroup: HotelGroupId;
@@ -411,9 +462,107 @@ export interface HotelLoyaltyMeta {
 
 export type PlaceCategory = 'activity' | 'nature' | 'beach' | 'food' | 'nightlife' | 'transport';
 
+/**
+ * How we know a place exists and where it is.
+ *
+ * Separate from `DataConfidence` (which is about the coordinate) because a place
+ * can be perfectly located and still be unverified as a business. A single
+ * social-media post is a DISCOVERY SIGNAL, never a verified fact.
+ */
+export type VerificationStatus =
+  /** Confirmed against an official site, a map/geographic source, or direct contact. */
+  | 'verified'
+  /** Exists and is located, but details (hours, menu) are unconfirmed. */
+  | 'partial'
+  /** Discovered but not yet confirmed — cannot be published to travellers. */
+  | 'unverified';
+
+export type PlaceSourceKind =
+  /** The venue's own website or booking page. */
+  | 'official'
+  /** OpenStreetMap, Wikidata, a map listing. */
+  | 'geographic'
+  /** Guidebook, newspaper, magazine. */
+  | 'editorial'
+  /** A social guide the researcher imported. Discovery signal only. */
+  | 'social';
+
+export interface PlaceSource {
+  kind: PlaceSourceKind;
+  /** Human-readable name of the source, e.g. "OpenStreetMap way 12345". */
+  label: string;
+  url?: string;
+  /** ISO date this source was consulted. */
+  retrievedOn?: string;
+}
+
+/** Aggregated social research signal, DERIVED from the research store — never authored. */
+export interface SocialSignals {
+  /** How many imported guides mention this place. */
+  mentionCount: number;
+  platforms: SocialPlatform[];
+  /** Recurring themes across mentions, e.g. "日落", "排队久". */
+  themes: string[];
+  /** Items repeatedly named by guides — dish names, activities. */
+  frequentlyMentioned: string[];
+  lastReviewedAt?: string;
+}
+
+export type MealType = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'coffee' | 'drinks' | 'dessert';
+
+/** Restaurant-specific structure. Present only when `category === 'food'` or a dining venue. */
+export interface PlaceDining {
+  /** Cuisine ids resolved through `lib/data/place-taxonomy`. */
+  cuisines: string[];
+  mealTypes: MealType[];
+  /** Positioning tier, not a price. */
+  priceTier: PriceTier;
+  /** Dishes the kitchen is known for. Only ever sourced, never invented. */
+  signatureItems: string[];
+  reservationRecommended: boolean;
+  /** True when the venue is known for a view or a sunset. */
+  viewOrSunset?: boolean;
+}
+
+export type ActivityKind =
+  | 'surf'
+  | 'dive'
+  | 'snorkel'
+  | 'rafting'
+  | 'volcano'
+  | 'atv'
+  | 'yoga'
+  | 'spa'
+  | 'beachclub'
+  | 'sunset'
+  | 'temple'
+  | 'waterfall'
+  | 'ricefield'
+  | 'cooking'
+  | 'island'
+  | 'shopping'
+  | 'hike';
+
+export type ActivityDifficulty = 'easy' | 'moderate' | 'hard';
+export type WeatherDependency = 'none' | 'low' | 'high';
+
+/** Activity-specific structure. */
+export interface PlaceActivity {
+  kind: ActivityKind;
+  difficulty?: ActivityDifficulty;
+  weatherDependency: WeatherDependency;
+  reservationRecommended: boolean;
+  /** One line on how you actually get there, e.g. "酒店包车或 Grab，约 30 分钟". */
+  transportContext?: string;
+  /** True when a certified operator or instructor is required. */
+  operatorRequired?: boolean;
+}
+
 export interface Place {
   id: string;
   name: string;
+  /** Chinese name. Shown first in zh-CN, with `name` kept visible for search. */
+  nameZh?: string;
   destinationId: string;
   areaId: string;
   category: PlaceCategory;
@@ -421,13 +570,35 @@ export interface Place {
   coordinates: Geocoded;
   recommendedDurationMin: number;
   bestTime: string;
+  /** Chinese for `bestTime`; falls back to the English string. */
+  bestTimeZh?: string;
   tags: string[];
+  /** Chinese for `tags`, positionally aligned. Falls back to `tags`. */
+  tagsZh?: string[];
   description: string;
+  /** Concise Chinese copy. Not a translation of `description` — see lib/i18n. */
+  descriptionZh?: string;
   notes?: string;
+  notesZh?: string;
   entryFee?: string;
+  entryFeeZh?: string;
   openingHours?: string;
   /** Rendered as a distinct marker shape, independent of the category colour. */
   markerLayer: MarkerLayer;
+  /**
+   * Which discovery categories this place appears under in DO.
+   *
+   * Authored rather than inferred from `markerLayer`: a beach club is nightlife
+   * *and* a beach, a warung is food *and* local cuisine, and deriving that from
+   * one enum lost most of it.
+   */
+  discovery?: string[];
+  /** Who this is actually for, as taxonomy ids. */
+  recommendedFor?: string[];
+  dining?: PlaceDining;
+  activity?: PlaceActivity;
+  sources?: PlaceSource[];
+  verificationStatus?: VerificationStatus;
   images: PlaceImage[];
 }
 
@@ -618,4 +789,132 @@ export interface RoutingProvider {
   /** Free-form cost/limits note shown in the transport panel. */
   costNote: string;
   route(request: RouteRequest): Promise<RouteResult>;
+}
+
+// ---------------------------------------------------------------------------
+// Social guide research
+// ---------------------------------------------------------------------------
+//
+// A SEPARATE data layer, deliberately.
+//
+// Production POI data is curated and verifiable. Social guides are a discovery
+// signal: someone said something about somewhere. Merging the two would let an
+// unverified mention become a published place, which is exactly the failure this
+// separation exists to prevent. Nothing here reaches a traveller until a
+// researcher moves it through review.
+
+export type SocialPlatform =
+  | 'xiaohongshu'
+  | 'douyin'
+  | 'tiktok'
+  | 'instagram'
+  | 'youtube'
+  | 'bilibili'
+  | 'blog'
+  /** Text the researcher typed or pasted from a source we cannot legally fetch. */
+  | 'manual'
+  | 'other';
+
+/**
+ * The review state of an imported guide.
+ *
+ * `unprocessed` → the URL is stored, nothing extracted yet.
+ * `extracted`   → mentions pulled out, awaiting matching/verification.
+ * `done`        → reviewed; its mentions are either accepted or dismissed.
+ */
+export type SocialGuideStatus = 'unprocessed' | 'extracted' | 'done' | 'ignored';
+
+export interface SocialGuideSource {
+  id: string;
+  platform: SocialPlatform;
+  /** Provenance. Kept even when the text had to be pasted by hand. */
+  url?: string;
+  title?: string;
+  author?: string;
+  /** ISO timestamp. */
+  importedAt: string;
+  userNotes?: string;
+  /**
+   * Text the researcher supplied.
+   *
+   * V1 does not scrape. The platforms this feature targets actively prohibit it,
+   * and circumventing their controls is not something this product does. Where
+   * automatic retrieval is not permitted, the researcher pastes what they read —
+   * and the URL stays attached as provenance.
+   */
+  rawText?: string;
+  status: SocialGuideStatus;
+  /** Set once extraction has run. */
+  extractedAt?: string;
+}
+
+/** Where a mention sits in the review pipeline. */
+export type MentionStatus =
+  /** Extracted, not yet matched to a canonical place. */
+  | 'pending'
+  /** Matched to an existing canonical place. Awaiting a human yes/no. */
+  | 'matched'
+  /** No confident match. A human must decide: new place, or nothing. */
+  | 'needs-review'
+  /** Accepted. May contribute to the place's social signals. */
+  | 'accepted'
+  /** Rejected — not a place, wrong place, or not useful. */
+  | 'dismissed';
+
+export type RecommendationType =
+  | 'restaurant'
+  | 'cafe'
+  | 'beachclub'
+  | 'bar'
+  | 'beach'
+  | 'nature'
+  | 'culture'
+  | 'activity'
+  | 'hotel'
+  | 'shopping'
+  | 'wellness'
+  | 'area'
+  | 'unknown';
+
+export type MentionSentiment = 'positive' | 'neutral' | 'mixed' | 'negative';
+
+export interface SocialMention {
+  id: string;
+  sourceId: string;
+  /** Exactly as it appeared in the guide, before any normalisation. */
+  rawPlaceName: string;
+  /** Cleaned for matching: lowercased, punctuation and suffixes stripped. */
+  normalizedPlaceName: string;
+  /** The canonical Meridian place this was matched to, if any. */
+  matchedPlaceId?: string;
+  /** How the match was decided, so a reviewer can audit it. */
+  matchMethod?: 'exact' | 'alias' | 'fuzzy' | 'manual';
+  /** 0–1. Below the confidence floor the mention is marked 需要确认. */
+  matchConfidence?: number;
+  recommendationType: RecommendationType;
+  sentiment: MentionSentiment;
+  /** Short, paraphrased note. Never a copied post. */
+  extractedNotes?: string;
+  /** Dishes, activities or specifics the guide named. */
+  recommendedItems: string[];
+  areaHint?: string;
+  status: MentionStatus;
+  createdAt: string;
+}
+
+/** A place discovered through research that has not earned canonical status yet. */
+export interface CandidatePlace {
+  id: string;
+  name: string;
+  nameZh?: string;
+  city: string;
+  areaId?: string;
+  areaHint?: string;
+  recommendationType: RecommendationType;
+  suggestedBy: string[];
+  coordinates?: Coordinates;
+  /** A short paraphrase written by the reviewer. Never copied text. */
+  notes?: string;
+  status: MentionStatus;
+  createdAt: string;
 }
