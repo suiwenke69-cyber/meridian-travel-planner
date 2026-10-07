@@ -262,8 +262,8 @@ export const zhCN = {
 
   // --- STAY ----------------------------------------------------------------
   'stay.title': '住哪里',
-  'stay.subtitleAll': '这里收录巴厘岛的万豪和希尔顿酒店。有实拍照片的排在前面。',
-  'stay.subtitleInArea': '{area}的万豪和希尔顿酒店。',
+  'stay.subtitleAll': '这里收录 Meridian 已核实的忠诚计划酒店（万豪、希尔顿、IHG、凯悦、GHA）。有实拍照片的排在前面。',
+  'stay.subtitleInArea': '{area}的忠诚计划酒店。',
   'stay.filterAll': '全部',
   'stay.filterMarriott': '万豪',
   'stay.filterHilton': '希尔顿',
@@ -867,6 +867,12 @@ export const zhCN = {
   'import.pickedMarker': '你标记的位置',
   'saved.fromYourGuide': '来自你的攻略（只有你能看到）',
   'import.imagesDuplicate': '这些图片已经在你的攻略里了，没有重复保存。',
+  'stay.filterIhg': 'IHG',
+  'stay.filterHyatt': '凯悦',
+  'stay.filterGha': 'GHA',
+  'stay.allianceTag': '联盟',
+  'stay.allianceNote': 'GHA DISCOVERY 是酒店联盟，不是一个酒店集团：成员是各自独立的品牌，共用一个忠诚计划。',
+  'stay.allianceGroup': '联盟成员',
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -1122,8 +1128,8 @@ export const en: Record<MessageKey, string> = {
   'explore.noAreaSelected': 'Pick a region on the map, or choose one below.',
 
   'stay.title': 'Where to stay',
-  'stay.subtitleAll': 'Every Marriott Bonvoy and Hilton Honors property we hold for Bali. Properties with photography come first.',
-  'stay.subtitleInArea': 'Marriott Bonvoy and Hilton Honors properties in {area}.',
+  'stay.subtitleAll': 'Every verified loyalty-programme property we hold (Marriott, Hilton, IHG, Hyatt, GHA). Properties with photography come first.',
+  'stay.subtitleInArea': 'Loyalty-programme properties in {area}.',
   'stay.filterAll': 'All',
   'stay.filterMarriott': 'Marriott',
   'stay.filterHilton': 'Hilton',
@@ -1744,4 +1750,12 @@ export const en: Record<MessageKey, string> = {
   'import.error.importImagesTooLarge': 'The images exceed the size budget ({detail}). Remove a few.',
   'import.pickedMarker': 'The spot you picked',
   'saved.fromYourGuide': 'From your guide (only you can see these)',
-  'import.imagesDuplicate': 'Those images are already in your guide — nothing was stored twice.',};
+  'import.imagesDuplicate': 'Those images are already in your guide — nothing was stored twice.',
+  'stay.filterIhg': 'IHG',
+  'stay.filterHyatt': 'Hyatt',
+  'stay.filterGha': 'GHA',
+  'stay.allianceTag': 'alliance',
+  'stay.allianceNote':
+    'GHA DISCOVERY is a hotel alliance, not a hotel company: its members are independently owned brands sharing one loyalty programme.',
+  'stay.allianceGroup': 'Alliance member',
+};

@@ -373,6 +373,15 @@
 .mk--hilton {
   --mk-color: #3a3f4d;
 }
+.mk--ihg {
+  --mk-color: #8e1b33;
+}
+.mk--hyatt {
+  --mk-color: #1b6e6a;
+}
+.mk--gha {
+  --mk-color: #8a6d2f;
+}
 .mk--activity {
   --mk-color: #b06340;
 }
@@ -409,8 +418,37 @@
   transition: transform 170ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+/*
+ * FIVE PROGRAMMES, FIVE SHAPES.
+ *
+ * Colour is never the only differentiator in this system, and five loyalty
+ * programmes on one island is exactly the case where that rule earns its keep:
+ * at 26px, in greyscale, or for a colour-blind reader, five coloured circles
+ * are indistinguishable. Each programme therefore also has a silhouette and a
+ * letter — rounded square M, circle H, hexagon I, diamond Y, shield G.
+ */
 .mk--marriott .mk__head {
   border-radius: 8px;
+}
+.mk--ihg .mk__head {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0% 50%);
+  border-radius: 0;
+}
+.mk--hyatt .mk__head {
+  border-radius: 7px;
+  transform: rotate(45deg);
+}
+/* Keep the letter upright inside the rotated diamond. */
+.mk--hyatt .mk__letter {
+  transform: rotate(-45deg);
+}
+.mk--hyatt.mk--selected .mk__head,
+.mk--hyatt.mk--emphasised .mk__head {
+  transform: rotate(45deg) scale(1.06);
+}
+.mk--gha .mk__head {
+  clip-path: polygon(50% 0%, 100% 18%, 100% 62%, 50% 100%, 0% 62%, 0% 18%);
+  border-radius: 0;
 }
 
 .mk--airport .mk__head {

@@ -207,6 +207,35 @@ Still open from this iteration:
 
 ---
 
+## V1.4 — ten destinations, five loyalty programmes
+
+**Every destination is now reference tier, and the loyalty model covers the
+programmes that actually trade in Southeast Asia.**
+
+- **A coordinate audit came first, and it changed the plan.** 73 of Bali's 145
+  places shared a coordinate with another record, most labelled `verified` with a
+  source note naming a *different* venue. Fixed as 73 reviewable corrections, and
+  the rule is now permanent in `validate:data`.
+- **Five programmes**: Marriott Bonvoy, Hilton Honors, IHG One Rewards, World of
+  Hyatt, GHA DISCOVERY — 73 brands. GHA is modelled as an alliance, because that
+  is what it is.
+- **Five shapes, five letters** on the map, because five programmes on one island
+  is exactly where colour-only differentiation fails.
+- **10 destinations · 117 areas · 97 loyalty hotels · 446 places**, from 48 / 42 /
+  216. Targets were treated as targets: Phu Quoc has 7 loyalty hotels, Cebu 5,
+  Boracay 1, and those are verified ceilings rather than omissions.
+
+Still open:
+
+- **Photography has not grown with the data.** The new hotels and places fall back
+  to a no-photograph state rather than borrowing a neighbour's image.
+- **Accor and Wyndham are absent.** A programme earns its place by having enough
+  real inventory to change where somebody stays.
+- **28 of Bali's 145 places are approximate or unlocatable.** Nearly all are small
+  restaurants no OSM mapper has surveyed.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces

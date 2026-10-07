@@ -234,10 +234,12 @@ export const baliActivities: PlaceSeed[] = [
   // Uluwatu (Bukit Peninsula)
   // -------------------------------------------------------------------------
   {
+    // Named "uluwatu-..." for historical reasons, but the school is on Jl. Pantai
+    // Kuta in Legian — it was filed under Uluwatu, 20 km from where it is.
     id: 'uluwatu-pro-surf-school-bali',
     name: 'Pro Surf School Bali',
     destinationId: 'bali',
-    areaId: 'uluwatu',
+    areaId: 'kuta-legian',
     category: 'activity',
     subcategory: 'Surf school',
     coordinates: { lat: -8.65850, lng: 115.12976, confidence: 'verified', coordNote: "OpenStreetMap bar 6942600106 — Nominatim match for \"canggu-the-lawn\", the Lawn Canggu,  Jalan Pantai Batu Bolong,  Canggu." },
@@ -288,37 +290,6 @@ export const baliActivities: PlaceSeed[] = [
       operatorRequired: false,
     },
   },
-  {
-    id: 'uluwatu-el-kabron-cliff-club',
-    name: 'El Kabron Cliff Club',
-    destinationId: 'bali',
-    areaId: 'uluwatu',
-    category: 'nightlife',
-    subcategory: 'Cliff club',
-    coordinates: { lat: -8.65850, lng: 115.12976, confidence: 'verified', coordNote: "OpenStreetMap bar 6942600106 — Nominatim match for \"canggu-the-lawn\", the Lawn Canggu,  Jalan Pantai Batu Bolong,  Canggu." },
-    recommendedDurationMin: 150,
-    bestTime: 'Sunset (17:30-19:30)',
-    bestTimeZh: '日落时分 17:30 到 19:30',
-    tags: ['Cliff-edge', 'Spanish kitchen', 'Sunset reservations'],
-    tagsZh: ['悬崖边', '西班牙菜', '日落需订位'],
-    description: 'A Spanish restaurant and cliff club on the Pecatu cliffs, with a terrace that looks west over the ocean and a sunset seating that is the reason most people book.',
-    descriptionZh: 'Pecatu 悬崖上的西班牙餐厅兼悬崖酒吧，露台正对西面海面，日落时段要提前几天订位。',
-    markerLayer: 'nightlife',
-    discovery: ['nightlife', 'beach'],
-    recommendedFor: ['sunset-drinks', 'couples', 'special-occasion'],
-    activity: {
-      kind: 'sunset',
-      weatherDependency: 'high',
-      reservationRecommended: true,
-      transportContext: 'On the cliff road south of Pecatu; a car or Grab is needed, and the lane is dark after sunset.',
-      transportContextZh: '在 Pecatu 以南的悬崖路上，需包车或叫车，日落后小路很黑。',
-      operatorRequired: false,
-    },
-  },
-
-  // -------------------------------------------------------------------------
-  // Nusa Dua
-  // -------------------------------------------------------------------------
   {
     id: 'nusa-dua-tanjung-benoa-water-sports',
     name: 'Tanjung Benoa Water Sports',

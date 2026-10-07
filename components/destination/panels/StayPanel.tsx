@@ -1,15 +1,42 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { Hotel, HotelGroupId } from '@/lib/types';
+import type { MessageKey } from '@/lib/i18n/messages';
+import { HOTEL_GROUPS } from '@/lib/data/hotel-brands';
 import { cn } from '@/lib/utils';
 import { useTripStore } from '@/lib/store/trip-store';
+import { useUiStore } from '@/lib/store/ui-store';
 import { isRefInTrip } from '@/lib/trip';
 import { HotelCard } from '../cards/HotelCard';
 import { EmptyState } from '../../ui/primitives';
 import { useT } from '@/lib/i18n/use-t';
 
 type GroupFilter = 'all' | HotelGroupId;
+
+/** Programme id → the suffix of its message key. */
+const GROUP_KEY: Record<HotelGroupId, string> = {
+  marriott: 'Marriott',
+  hilton: 'Hilton',
+  ihg: 'Ihg',
+  hyatt: 'Hyatt',
+  gha: 'Gha',
+};
+
+/**
+ * Swatch shape per programme, matching the map marker.
+ *
+ * The legend swatch and the marker must agree, or the filter row teaches the
+ * wrong shape. Tailwind classes rather than inline clip-paths so the swatch and
+ * the 26px marker stay recognisably the same thing at different sizes.
+ */
+const GROUP_SHAPE: Record<HotelGroupId, string> = {
+  marriott: 'rounded-[2px]',
+  hilton: 'rounded-full',
+  ihg: 'rounded-[1px] [clip-path:polygon(25%_0%,75%_0%,100%_50%,75%_100%,25%_100%,0%_50%)]',
+  hyatt: 'rounded-[1px] rotate-45',
+  gha: 'rounded-[1px] [clip-path:polygon(50%_0%,100%_20%,100%_65%,50%_100%,0%_65%,0%_20%)]',
+};
 
 /**
  * STAY is hotel exploration, not a booking funnel.
@@ -38,7 +65,8 @@ export function StayPanel({
   onClearArea: () => void;
 }) {
   const t = useT();
-  const [group, setGroup] = useState<GroupFilter>('all');
+  const group = useUiStore((st) => st.stayGroup) as GroupFilter;
+  const setGroup = useUiStore((st) => st.setStayGroup);
   const trip = useTripStore((s) => {
     const active = s.trips.find((t) => t.id === s.activeTripId);
     if (active && active.destinationId === destinationId) return active;
@@ -62,8 +90,21 @@ export function StayPanel({
     });
   }, [hotels, group, focusedAreaId]);
 
-  const marriottCount = hotels.filter((h) => h.hotelGroup === 'marriott').length;
-  const hiltonCount = hotels.filter((h) => h.hotelGroup === 'hilton').length;
+  /*
+   * Counts and filters come from the registry, not from a written-out list.
+   *
+   * Two hard-coded entries were fine for two programmes and became a bug for
+   * five: the filter row would simply not offer the new ones, and nothing would
+   * look broken.
+   */
+  const groupCounts = HOTEL_GROUPS.map((group) => ({
+    id: group.id as GroupFilter,
+    label: t(`stay.filter${GROUP_KEY[group.id]}` as MessageKey),
+    count: hotels.filter((h) => h.hotelGroup === group.id).length,
+    colour: group.color,
+    shape: GROUP_SHAPE[group.id],
+    alliance: group.alliance,
+  })).filter((entry) => entry.count > 0);
   const focusedAreaName = focusedAreaId ? areaNameById.get(focusedAreaId) : null;
   /** Never hard-code a list size in copy: it goes stale the moment data changes. */
   const destinationTotals = hotels.length;
@@ -90,34 +131,34 @@ export function StayPanel({
         )}
 
         <div className="mt-2.5 flex flex-wrap gap-1">
-          {(
-            [
-              ['all', t('stay.filterAll'), hotels.length],
-              ['marriott', t('stay.filterMarriott'), marriottCount],
-              ['hilton', t('stay.filterHilton'), hiltonCount],
-            ] as Array<[GroupFilter, string, number]>
-          ).map(([id, label, count]) => (
+          {[
+            { id: 'all' as GroupFilter, label: t('stay.filterAll'), count: hotels.length, colour: null as string | null, shape: null as string | null, alliance: false },
+            ...groupCounts,
+          ].map((entry) => (
             <button
-              key={id}
+              key={entry.id}
               type="button"
-              aria-pressed={group === id}
-              onClick={() => setGroup(id)}
-              data-testid={`stay-filter-${id}`}
+              aria-pressed={group === entry.id}
+              onClick={() => setGroup(entry.id)}
+              data-testid={`stay-filter-${entry.id}`}
+              title={entry.alliance ? t('stay.allianceNote') : undefined}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11.5px] font-medium transition-colors duration-150',
-                group === id
+                group === entry.id
                   ? 'border-accent/25 bg-accent-soft text-accent'
                   : 'border-line bg-surface text-ink-soft hover:border-line-strong',
               )}
             >
-              {id !== 'all' && (
+              {entry.colour && entry.shape && (
                 <span
                   aria-hidden="true"
-                  className={cn('inline-block h-2.5 w-2.5', id === 'marriott' ? 'rounded-[2px] bg-marriott' : 'rounded-full bg-hilton')}
+                  className={cn('inline-block h-2.5 w-2.5', entry.shape)}
+                  style={{ background: entry.colour }}
                 />
               )}
-              {label}
-              <span className="tabular-nums text-faint">{count}</span>
+              {entry.label}
+              {entry.alliance && <span className="text-[9.5px] text-faint">{t('stay.allianceTag')}</span>}
+              <span className="tabular-nums text-faint">{entry.count}</span>
             </button>
           ))}
         </div>

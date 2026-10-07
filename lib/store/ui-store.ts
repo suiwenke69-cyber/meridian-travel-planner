@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Locale, MarkerLayer } from '../types';
+import type { HotelGroupId, Locale, MarkerLayer } from '../types';
 import { DEFAULT_LOCALE } from '../types';
 import { defaultLayerVisibility } from '../layers';
 
@@ -93,6 +93,14 @@ export interface UiStoreState {
   selectedLegId: string | null;
   /** DO category filter. */
   doCategory: DoCategory;
+  /**
+   * STAY programme filter.
+   *
+   * Lives here rather than in the panel because the MAP reads it too. It used to
+   * be component state, so filtering the list left every programme's markers on
+   * the map — the list said "Hyatt" while the map still drew Marriott.
+   */
+  stayGroup: 'all' | HotelGroupId;
   /** EXPLORE segmented control — shared with the map so zones match the list. */
   exploreScope: ExploreScope;
 
@@ -119,6 +127,7 @@ export interface UiStoreState {
   setHoveredEntity: (id: string | null) => void;
   selectLeg: (id: string | null) => void;
   setDoCategory: (category: DoCategory) => void;
+  setStayGroup: (group: 'all' | HotelGroupId) => void;
   setExploreScope: (scope: ExploreScope) => void;
 
   requestFocus: (lat: number, lng: number, zoom?: number) => void;
@@ -146,6 +155,7 @@ export const useUiStore = create<UiStoreState>()(
       hoveredEntityId: null,
       selectedLegId: null,
       doCategory: 'highlights',
+      stayGroup: 'all',
       exploreScope: 'stay',
 
       focusRequest: null,
@@ -213,6 +223,7 @@ export const useUiStore = create<UiStoreState>()(
       setHoveredEntity: (id) => set({ hoveredEntityId: id }),
       selectLeg: (id) => set({ selectedLegId: id }),
       setDoCategory: (category) => set({ doCategory: category }),
+      setStayGroup: (group) => set({ stayGroup: group }),
       setExploreScope: (scope) => set({ exploreScope: scope }),
 
       requestFocus: (lat, lng, zoom) =>

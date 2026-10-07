@@ -90,10 +90,28 @@ export function svgGlyph(name: keyof typeof GLYPHS, size = 14): string {
   return `<svg class="mk__glyph" viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false">${GLYPHS[name]}</svg>`;
 }
 
+/**
+ * Letter-mark per loyalty programme.
+ *
+ * One letter each, and no two the same: M, H, I, Y, G. Colour is never the only
+ * differentiator in this system, so the head SHAPE differs too (see
+ * `components/map/map.css`): Marriott a rounded square, Hilton a circle, IHG a
+ * hexagon, Hyatt a diamond, GHA a shield. That matters because five programmes
+ * on one island is exactly the situation where colour alone fails — in
+ * greyscale, for a colour-blind reader, and at 26px.
+ */
+const HOTEL_LETTERS: Partial<Record<MarkerLayer, string>> = {
+  marriott: 'M',
+  hilton: 'H',
+  ihg: 'I',
+  hyatt: 'Y',
+  gha: 'G',
+};
+
 function headContent(layer: MarkerLayer, order?: number): string {
   if (typeof order === 'number') return ORDER_GLYPH(order);
-  if (layer === 'marriott') return LETTER_GLYPH('M');
-  if (layer === 'hilton') return LETTER_GLYPH('H');
+  const letter = HOTEL_LETTERS[layer];
+  if (letter) return LETTER_GLYPH(letter);
   if (layer === 'airport') return `<span class="mk__glyph-wrap">${svgGlyph('plane', 15)}</span>`;
   const map: Partial<Record<MarkerLayer, keyof typeof GLYPHS>> = {
     activity: 'sparkle',
@@ -194,6 +212,9 @@ export function escapeHtml(value: string): string {
 export const LAYER_COLORS: Record<MarkerLayer, string> = {
   marriott: '#123A5C',
   hilton: '#33384A',
+  ihg: '#8E1B33',
+  hyatt: '#1B6E6A',
+  gha: '#8A6D2F',
   activity: '#C2643A',
   nature: '#3F7D4E',
   beach: '#2A7C9E',

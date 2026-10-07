@@ -740,6 +740,9 @@ export const baliRestaurants: PlaceSeed[] = [
   // Uluwatu — cliff sunset dining, seafood, surfer cafés, one warung
   // -------------------------------------------------------------------------
   {
+    // El Kabron appears once. It was listed twice — once as a restaurant here and
+    // once as a cliff club in bali-activities.ts — which put two markers on one
+    // cliff and two entries in the DO list for one venue.
     id: 'el-kabron-bali',
     name: 'El Kabron Bali',
     destinationId: 'bali',

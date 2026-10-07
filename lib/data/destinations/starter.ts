@@ -1,6 +1,17 @@
 /**
- * STARTER DESTINATIONS — Phu Quoc, Da Nang / Hoi An, Ho Chi Minh City, Hanoi,
- * Siem Reap, Phnom Penh, Cebu, Boracay and Palawan.
+ * THE NINE NON-BALI DESTINATIONS — Phu Quoc, Da Nang / Hoi An, Ho Chi Minh City,
+ * Hanoi, Siem Reap, Phnom Penh, Cebu, Boracay and Palawan.
+ *
+ * All nine are now `reference` tier: each has 7–14 real areas, 21–39 verified
+ * places, and loyalty hotels across every programme that genuinely trades there.
+ * The file name and the `starter*` export names are historical — they date from
+ * when these were eight-place sketches — and renaming them would touch thirty
+ * import sites for no behavioural gain.
+ *
+ * Where a destination has fewer hotels than its neighbours, that is a finding
+ * rather than a gap: Boracay has one loyalty property on the whole island and
+ * Palawan has one in the province, and both were verified against the brands'
+ * own location lists before being left that way.
  *
  * PROVENANCE: generated from a coordinate-verification pass. City, airport, area,
  * hotel and attraction coordinates were sourced from Wikipedia/Wikidata,
@@ -303,14 +314,16 @@ const phuQuoc: DestinationSeed = {
   countryCode: "VN",
   flag: "🇻🇳",
   region: "vietnam",
-  status: 'starter',
+  status: 'reference',
   tagline: "Vietnam's island escape of beaches and cable cars",
   description: "Vietnam's largest island, in the Gulf of Thailand off the Cambodian coast, ringed by long sand beaches and fishing villages. It has been transformed since the 2010s into a resort island with an over-sea cable car to Hon Thom, a large theme park and safari, and its own visa-free zone for direct arrivals. The north-west (Ong Lang, Cua Can, Ganh Dau) is quieter and greener, while the south (An Thoi, Sunset Town, Kem and Sao beaches) is the developed resort zone. A 2025 provincial merger moved Phu Quoc from Kien Giang into An Giang province.",
   coordinates: { lat: 10.2289, lng: 103.9572, confidence: "approximate", coordNote: "" },
   mapView: { center: [10.1825, 103.9431], zoom: 11 },
+  // Widened north to Rach Vem and Thom Beach and south to the An Thoi islands,
+  // which are genuinely part of Phu Quoc and were outside the original box.
   mapBounds: [
-    [9.9871, 103.8099],
-    [10.378, 104.0764],
+    [9.9, 103.8],
+    [10.44, 104.1],
   ],
   recommendedDays: {"min":3,"ideal":4,"max":6},
   tags: ["Beach","Resort","Nature","Island"],
@@ -635,7 +648,7 @@ const daNangHoiAn: DestinationSeed = {
   countryCode: "VN",
   flag: "🇻🇳",
   region: "vietnam",
-  status: 'starter',
+  status: 'reference',
   tagline: "Central Vietnam's beach city and lantern-lit old town",
   description: "Da Nang is Vietnam's third-largest city and a fast-growing beach destination, with a 30 km beach strip, the Marble Mountains and the fire-breathing Dragon Bridge. Hoi An, about 30 km south, is a UNESCO World Heritage trading port whose Ancient Town is famous for lanterns, tailors and Japanese and Chinese merchant houses. Da Nang International Airport (DAD) serves both, making the pair an easy single trip.",
   coordinates: { lat: 16.06944, lng: 108.20972, confidence: "approximate", coordNote: "" },
@@ -970,14 +983,16 @@ const hoChiMinhCity: DestinationSeed = {
   countryCode: "VN",
   flag: "🇻🇳",
   region: "vietnam",
-  status: 'starter',
+  status: 'reference',
   tagline: "Vietnam's fast, loud and food-obsessed southern metropolis",
   description: "Vietnam's largest city and commercial capital, built around the Saigon River and the former District 1 colonial core. Highlights are the War Remnants Museum, the Reunification Palace, Ben Thanh Market and the Bui Vien nightlife strip, with the Cu Chi Tunnels and the Mekong Delta within day-trip range. It is the shortest and most frequent flight from Singapore among the Vietnamese cities.",
   coordinates: { lat: 10.77556, lng: 106.69694, confidence: "approximate", coordNote: "" },
   mapView: { center: [10.8953, 106.631], zoom: 11 },
+  // Widened east to the Cat Lai ferry and the Thu Duc bank, which the city's
+  // own geography includes and the original box clipped.
   mapBounds: [
-    [10.6898, 106.4886],
-    [11.1008, 106.7733],
+    [10.68, 106.47],
+    [11.11, 106.83],
   ],
   recommendedDays: {"min":2,"ideal":3,"max":5},
   tags: ["City","Food","Culture","Nightlife"],
@@ -1306,14 +1321,16 @@ const hanoi: DestinationSeed = {
   countryCode: "VN",
   flag: "🇻🇳",
   region: "vietnam",
-  status: 'starter',
+  status: 'reference',
   tagline: "Vietnam's old capital of lakes, temples and street food",
   description: "Vietnam's capital, built around Hoan Kiem Lake and the dense guild streets of the Old Quarter. It is the main gateway to Halong Bay and the northern highlands, and its food culture - bun cha, pho, egg coffee and bia hoi - is a destination in itself. Hanoi has no beach; the appeal is history, architecture and eating.",
   coordinates: { lat: 21.02889, lng: 105.8525, confidence: "approximate", coordNote: "" },
   mapView: { center: [21.0336, 105.8207], zoom: 11 },
+  // Widened north-east to Bat Trang and Co Loa, both Hanoi day trips that the
+  // original box excluded while the dataset already described them as Hanoi.
   mapBounds: [
-    [20.9676, 105.7425],
-    [21.0997, 105.8989],
+    [20.96, 105.74],
+    [21.13, 105.94],
   ],
   recommendedDays: {"min":3,"ideal":4,"max":5},
   tags: ["City","Culture","Food","History"],
@@ -1586,14 +1603,16 @@ const siemReap: DestinationSeed = {
   countryCode: "KH",
   flag: "🇰🇭",
   region: "cambodia",
-  status: 'starter',
+  status: 'reference',
   tagline: "Gateway to Angkor and Cambodia's temple town",
   description: "The town that serves the Angkor Archaeological Park, the UNESCO World Heritage site whose Angkor Wat is the largest religious monument in the world. Beyond the temples, Siem Reap has a compact bar-and-market centre around Pub Street and the Old Market, and trips out to the Tonle Sap floating villages. Siem Reap's airport code changed from REP to SAI when the new Siem Reap-Angkor International Airport opened 45-50 km east of town in October 2023.",
   coordinates: { lat: 13.35483, lng: 103.85478, confidence: "approximate", coordNote: "" },
   mapView: { center: [13.3251, 104.0299], zoom: 11 },
+  // Widened to the Tonle Sap villages in the south and the silk farm west of
+  // town — both genuine Siem Reap day trips outside the original box.
   mapBounds: [
-    [13.169, 103.799],
-    [13.4813, 104.2608],
+    [13.08, 103.7],
+    [13.58, 104.28],
   ],
   recommendedDays: {"min":3,"ideal":4,"max":5},
   tags: ["Culture","Heritage","Temples","History"],
@@ -1842,14 +1861,16 @@ const phnomPenh: DestinationSeed = {
   countryCode: "KH",
   flag: "🇰🇭",
   region: "cambodia",
-  status: 'starter',
+  status: 'reference',
   tagline: "Cambodia's riverside capital of palaces and hard history",
   description: "Cambodia's capital, set at the confluence of the Mekong and Tonle Sap rivers. Its sights run from the Royal Palace and Silver Pagoda to the Tuol Sleng Genocide Museum and the Choeung Ek killing fields, with a lively Riverside promenade, markets and a growing cafe and restaurant scene. Phnom Penh's commercial airport moved to Techo International Airport (KTI) in September 2025, about 19-30 km south of the city.",
   coordinates: { lat: 11.56674, lng: 104.93203, confidence: "approximate", coordNote: "" },
   mapView: { center: [11.5763, 104.9223], zoom: 11 },
+  // Widened west to cover the Crowne Plaza on Russian Federation Boulevard and
+  // the Por Sen Chey district, which are Phnom Penh and were outside the box.
   mapBounds: [
-    [11.4444, 104.862],
-    [11.7081, 104.9827],
+    [11.44, 104.83],
+    [11.72, 104.99],
   ],
   recommendedDays: {"min":2,"ideal":3,"max":4},
   tags: ["City","History","Culture","Food"],
@@ -2131,7 +2152,7 @@ const cebu: DestinationSeed = {
   countryCode: "PH",
   flag: "🇵🇭",
   region: "philippines",
-  status: 'starter',
+  status: 'reference',
   tagline: "Philippine history, diving and Mactan beach resorts",
   description: "The Philippines' oldest city and the hub of the central Visayas, combining Spanish colonial heritage in Cebu City with the beach and dive resorts of Mactan Island next to the airport. South of the city, Moalboal's sardine run, Kawasan Falls and Oslob's whale sharks make Cebu one of the country's main adventure-diving destinations. Mactan-Cebu International Airport (CEB) is served nonstop from Singapore.",
   coordinates: { lat: 10.29356, lng: 123.90128, confidence: "approximate", coordNote: "" },
@@ -2369,7 +2390,7 @@ const boracay: DestinationSeed = {
   countryCode: "PH",
   flag: "🇵🇭",
   region: "philippines",
-  status: 'starter',
+  status: 'reference',
   tagline: "Four kilometres of white sand and sunset bars",
   description: "A small, 7 km-long island in Aklan province whose 4 km White Beach is the Philippines' best-known beach, split into Stations 1, 2 and 3. The east coast's Bulabog Beach is a major kitesurfing venue, while the north end around Diniwid and Puka is quieter. The island was closed for a six-month environmental rehabilitation in 2018 and now operates under visitor caps and beach rules that ban eating, drinking and loungers on the sand.",
   coordinates: { lat: 11.95823, lng: 121.92325, confidence: "approximate", coordNote: "" },
@@ -2655,7 +2676,7 @@ const palawan: DestinationSeed = {
   countryCode: "PH",
   flag: "🇵🇭",
   region: "philippines",
-  status: 'starter',
+  status: 'reference',
   tagline: "Limestone lagoons, jungle rivers and the last frontier",
   description: "A 450 km-long province in the Philippines' Mimaropa region, split between Puerto Princesa in the centre and El Nido in the north. Puerto Princesa is the gateway to the UNESCO-listed Puerto Princesa Subterranean River at Sabang and to Honda Bay island hopping, while El Nido's Bacuit Bay is famous for its limestone lagoons and island-hopping tours. There is no nonstop Singapore service: Puerto Princesa is reached via Manila, and El Nido by a small turboprop airstrip or a 5-6 hour van from Puerto Princesa.",
   coordinates: { lat: 9.7405, lng: 118.735, confidence: "approximate", coordNote: "" },

@@ -606,7 +606,7 @@ China is an **origin market only**. There are no Chinese destinations, deliberat
 product is fully usable in it.
 
 The localization is an architecture, not a find-and-replace. `lib/i18n/messages.ts` holds
-787 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
+793 keys; `zhCN` is authored first and `en` is typed as `Record<keyof typeof zhCN, string>`,
 which makes a missing or misspelled translation a **compile error** rather than a raw key
 in the interface.
 

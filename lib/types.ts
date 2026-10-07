@@ -296,7 +296,15 @@ export interface Imaged {
  * Separating the two means a destination can ship with no photography at all
  * and still typecheck, which is exactly what the fallback UI is for.
  */
-export type AreaSeed = Omit<Area, 'images' | 'tagline'>;
+/**
+ * An area before decoration.
+ *
+ * `tagline` is optional here and required on `Area`, so a newly authored area can
+ * carry its own tagline inline — the alternative was a second shared registry
+ * file that ten authors would have had to edit in sequence. `AREA_TAGLINES`
+ * still supplies the lines for the areas that were authored before this.
+ */
+export type AreaSeed = Omit<Area, 'images' | 'tagline'> & { tagline?: string };
 /** A destination as authored, before areas are decorated with photography. */
 export type DestinationSeed = Omit<Destination, 'areas'> & { areas: AreaSeed[] };
 export type HotelSeed = Omit<Hotel, 'images'>;
@@ -394,6 +402,9 @@ export interface TransportLeg {
 export type MarkerLayer =
   | 'marriott'
   | 'hilton'
+  | 'ihg'
+  | 'hyatt'
+  | 'gha'
   | 'activity'
   | 'nature'
   | 'beach'
@@ -402,7 +413,17 @@ export type MarkerLayer =
   | 'airport'
   | 'transport';
 
-export type HotelGroupId = 'marriott' | 'hilton';
+/**
+ * The loyalty programmes Meridian models.
+ *
+ * Five, and the list is deliberately short. A programme earns its place by
+ * having enough real inventory in Southeast Asia to change where somebody stays
+ * — which is why Accor Live Limitless and Wyndham Rewards are absent rather than
+ * half-populated. GHA is a consortium rather than a hotel company (§ see the
+ * brand registry) and is modelled as its own programme because that is how its
+ * members' loyalty works: one DISCOVERY account across all of them.
+ */
+export type HotelGroupId = 'marriott' | 'hilton' | 'ihg' | 'hyatt' | 'gha';
 
 export interface HotelBrand {
   id: string;

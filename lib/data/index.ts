@@ -4,7 +4,9 @@ import type {
   AreaSeed,
   Destination,
   DestinationSeed,
+  Geocoded,
   Hotel,
+  HotelGroupId,
   HotelSeed,
   OriginDestinationConnection,
   Place,
@@ -13,6 +15,7 @@ import type {
 import { getConnection } from './connections';
 import { getImages } from '../images';
 import { AREA_TAGLINES, deriveTagline } from './area-taglines';
+import { HOTEL_GROUPS } from './hotel-brands';
 import { bali, baliAreas, baliHotels, baliPlaces } from './destinations/bali';
 import { baliRestaurants } from './destinations/bali-restaurants';
 import { baliActivities } from './destinations/bali-activities';
@@ -27,6 +30,12 @@ import {
   STARTER_DESTINATION_ZH,
 } from './zh/bali-zh';
 import { starterDestinations, starterHotels, starterPlaces } from './destinations/starter';
+import { extraAreas, extraHotels, extraPlaces } from './destinations/extra';
+import {
+  HOTEL_COORDINATE_FIXES,
+  PLACE_COORDINATE_FIXES,
+  unlocatable,
+} from './destinations/extra/coord-corrections';
 
 /**
  * Destination registry.
@@ -43,10 +52,28 @@ import { starterDestinations, starterHotels, starterPlaces } from './destination
  * presentation data, and means swapping the image provider (or shipping a
  * destination with no photography at all) requires no change to the data.
  */
+/**
+ * Applies an audited coordinate correction, when one exists.
+ *
+ * The original record keeps its own coordinate in its own file; the correction is
+ * a separate, reviewable list. A record the audit could not place becomes
+ * `unlocatable`, which removes it from the map rather than leaving it on a
+ * neighbour's doorstep.
+ */
+function fixCoordinates(
+  seed: { id: string; coordinates: Geocoded },
+  fixes: Record<string, { coordinates?: Geocoded; reason: string }>,
+): Geocoded {
+  const fix = fixes[seed.id];
+  if (!fix) return seed.coordinates;
+  return fix.coordinates ?? unlocatable(fix.reason);
+}
+
 function decorateHotel(hotel: HotelSeed): Hotel {
   const zh = BALI_HOTEL_ZH[hotel.id];
   return {
     ...hotel,
+    coordinates: fixCoordinates(hotel, HOTEL_COORDINATE_FIXES),
     nameZh: hotel.nameZh ?? zh?.nameZh,
     descriptionZh: hotel.descriptionZh ?? zh?.descriptionZh,
     images: getImages('hotel', hotel.id),
@@ -57,6 +84,7 @@ function decoratePlace(place: PlaceSeed): Place {
   const zh = BALI_PLACE_ZH[place.id];
   return {
     ...place,
+    coordinates: fixCoordinates(place, PLACE_COORDINATE_FIXES),
     nameZh: place.nameZh ?? zh?.nameZh,
     descriptionZh: place.descriptionZh ?? zh?.descriptionZh,
     bestTimeZh: place.bestTimeZh ?? zh?.bestTimeZh,
@@ -75,14 +103,35 @@ function decorateArea(area: AreaSeed): Area {
     vibeZh: area.vibeZh ?? zh?.vibeZh,
     bestForZh: area.bestForZh ?? zh?.bestForZh,
     weakForZh: area.weakForZh ?? zh?.weakForZh,
-    tagline: AREA_TAGLINES[area.id] ?? deriveTagline(area),
+    // An authored tagline on the seed wins; the registry and the derivation are
+    // the fallbacks for areas authored before taglines moved onto the record.
+    tagline: area.tagline ?? AREA_TAGLINES[area.id] ?? deriveTagline(area),
     images: getImages('area', area.id),
   };
 }
 
-const HOTELS: Hotel[] = [...baliHotels, ...starterHotels].map(decorateHotel);
-const PLACES: Place[] = [...baliPlaces, ...baliRestaurants, ...baliActivities, ...starterPlaces].map(decoratePlace);
-const AREAS: Area[] = [baliAreas, ...starterDestinations.map((d) => d.areas)].flat().map((area) => decorateArea(area));
+const SEED_AREAS: AreaSeed[] = [baliAreas, ...starterDestinations.map((d) => d.areas)].flat();
+
+/**
+ * Areas added after the first pass, indexed by destination.
+ *
+ * These have to reach `destination.areas` as well as the global AREAS list. The
+ * first wiring only appended them globally, so a newly authored area existed,
+ * had coordinates, and was referenced by hotels — while the EXPLORE panel, the
+ * area list and the validator's own referenced-area check all read
+ * `destination.areas` and could not see it. The symptom was `areaId "vung-bau"
+ * does not exist` for an area sitting right there in the dataset.
+ */
+const EXTRA_AREAS_BY_DESTINATION = new Map<string, AreaSeed[]>();
+for (const area of extraAreas) {
+  const list = EXTRA_AREAS_BY_DESTINATION.get(area.destinationId) ?? [];
+  list.push(area);
+  EXTRA_AREAS_BY_DESTINATION.set(area.destinationId, list);
+}
+
+const HOTELS: Hotel[] = [...baliHotels, ...starterHotels, ...extraHotels].map(decorateHotel);
+const PLACES: Place[] = [...baliPlaces, ...baliRestaurants, ...baliActivities, ...starterPlaces, ...extraPlaces].map(decoratePlace);
+const AREAS: Area[] = [...SEED_AREAS, ...extraAreas].map(decorateArea);
 
 function decorateDestination(destination: DestinationSeed): Destination {
   const naming = DESTINATION_ZH[destination.id];
@@ -98,7 +147,7 @@ function decorateDestination(destination: DestinationSeed): Destination {
       (destination.id === 'bali'
         ? BALI_DESTINATION_BESTFOR_ZH
         : STARTER_DESTINATION_BESTFOR_ZH[destination.id]),
-    areas: destination.areas.map(decorateArea),
+    areas: [...destination.areas, ...(EXTRA_AREAS_BY_DESTINATION.get(destination.id) ?? [])].map(decorateArea),
   };
 }
 
@@ -207,8 +256,8 @@ export function findEntity(destinationId: string, id: string): EntityRef | null 
 
 export interface DestinationStats {
   hotelCount: number;
-  marriottCount: number;
-  hiltonCount: number;
+  /** Loyalty inventory per programme, so the UI never hard-codes a list. */
+  hotelCountByGroup: Record<HotelGroupId, number>;
   placeCount: number;
   areaCount: number;
   airportCount: number;
@@ -222,8 +271,20 @@ export function destinationStats(destinationId: string): DestinationStats {
   const all = [...hotels.map((h) => h.coordinates), ...places.map((p) => p.coordinates)];
   return {
     hotelCount: hotels.length,
-    marriottCount: hotels.filter((h) => h.hotelGroup === 'marriott').length,
-    hiltonCount: hotels.filter((h) => h.hotelGroup === 'hilton').length,
+    /*
+     * A count per programme rather than one field per programme.
+     *
+     * `marriottCount` and `hiltonCount` were fine while there were two; with five
+     * they would be five fields to add, and the sixth programme would be a silent
+     * omission rather than a type error.
+     */
+    hotelCountByGroup: HOTEL_GROUPS.reduce(
+      (acc, group) => {
+        acc[group.id] = hotels.filter((h) => h.hotelGroup === group.id).length;
+        return acc;
+      },
+      {} as Record<HotelGroupId, number>,
+    ),
     placeCount: places.length,
     areaCount: getAreas(destinationId).length,
     airportCount: getAirports(destinationId).length,

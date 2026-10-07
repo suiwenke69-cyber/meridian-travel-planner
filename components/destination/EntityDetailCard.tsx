@@ -46,6 +46,9 @@ const STYLE_KEY: Record<HotelStyle, MessageKey> = {
 const CATEGORY_KEY: Record<string, MessageKey> = {
   marriott: 'stay.filterMarriott',
   hilton: 'stay.filterHilton',
+  ihg: 'stay.filterIhg',
+  hyatt: 'stay.filterHyatt',
+  gha: 'stay.filterGha',
   activity: 'cat.activity',
   nature: 'cat.nature',
   beach: 'cat.beach',

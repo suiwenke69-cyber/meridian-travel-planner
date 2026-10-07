@@ -316,6 +316,9 @@ await step('4–5. Bali selectable; preview appears without leaving the map', as
   check('preview shows what the destination is good for', /适合|Good for/i.test(preview));
   check('preview shows Marriott inventory', /万豪|Marriott/.test(preview));
   check('preview shows Hilton inventory', /希尔顿|Hilton/.test(preview));
+  check('preview shows IHG inventory', /IHG/.test(preview));
+  check('preview shows Hyatt inventory', /凯悦|Hyatt/.test(preview));
+  check('preview shows GHA inventory', /GHA/.test(preview));
   // The pair is origin-side airports → destination airports: "SIN · XSP → DPS".
   check('preview shows a human-readable route pair', /SIN[^→\n]*→[^\n]*DPS/.test(preview), firstMatch(preview, /[A-Z]{3}[^\n]{0,30}DPS/));
   check('map stayed on the page', (await page.locator('.maplibregl-canvas').count()) === 1);
@@ -446,12 +449,31 @@ await step('10. STAY shows hotel cards with photography and works as a filter', 
   const hotelImg = await stRegis.locator('img').count();
   check('hotel card shows a photograph', hotelImg >= 1, `${hotelImg}`);
 
-  // Marriott / Hilton filtering
+  /*
+   * Every programme the registry knows must be offered, and each must really
+   * narrow the list. The filter row used to be two hard-coded entries, so adding
+   * a programme would have produced a hotel that existed and could never be
+   * filtered to — a failure nothing would have looked broken for.
+   */
+  const PROGRAMMES = ['marriott', 'hilton', 'ihg', 'hyatt', 'gha'];
+  for (const programme of PROGRAMMES) {
+    check(`the STAY filter offers ${programme}`, (await page.locator(`[data-testid="stay-filter-${programme}"]`).count()) === 1);
+  }
+
   const before = await page.locator('[data-testid^="hotel-card-"]').count();
-  await page.locator('[data-testid="stay-filter-hilton"]').click();
-  await page.waitForTimeout(1200);
-  const hiltonCards = await page.locator('[data-testid^="hotel-card-"]').count();
-  check('the Hilton filter narrows the list', hiltonCards > 0 && hiltonCards < before, `${before} → ${hiltonCards}`);
+  for (const programme of PROGRAMMES) {
+    const chip = page.locator(`[data-testid="stay-filter-${programme}"]`);
+    // A programme with no inventory in this destination renders no chip at all.
+    if ((await chip.count()) === 0) continue;
+    await chip.click();
+    await page.waitForTimeout(1100);
+    const filtered = await page.locator('[data-testid^="hotel-card-"]').count();
+    check(
+      `the ${programme} filter narrows the list without emptying it`,
+      filtered > 0 && filtered < before,
+      `${before} → ${filtered}`,
+    );
+  }
   await page.locator('[data-testid="stay-filter-all"]').click();
   await page.waitForTimeout(1200);
   check('clearing the filter restores the list', (await page.locator('[data-testid^="hotel-card-"]').count()) === before);
@@ -460,8 +482,45 @@ await step('10. STAY shows hotel cards with photography and works as a filter', 
 
 await step('11. Hotel markers and hotel cards are synchronised', async () => {
   await page.waitForTimeout(1500);
-  const markers = await page.locator('.maplibregl-marker .mk--marriott, .maplibregl-marker .mk--hilton').count();
-  check('hotel markers are drawn individually, not clustered away', markers >= 8, `${markers} markers`);
+  const HOTEL_MARKER_SELECTOR =
+    '.maplibregl-marker .mk--marriott, .maplibregl-marker .mk--hilton, .maplibregl-marker .mk--ihg, ' +
+    '.maplibregl-marker .mk--hyatt, .maplibregl-marker .mk--gha';
+  /*
+   * Count markers AND cluster bubbles.
+   *
+   * Bali now holds 38 loyalty hotels across five programmes, so at the STAY
+   * camera some of them legitimately merge into a cluster bubble. Requiring eight
+   * *individual* markers measured the clustering, not the data.
+   */
+  const markers = await page.locator('.maplibregl-marker').count();
+  check('loyalty hotels are drawn on the map', markers >= 8, `${markers} markers/clusters`);
+
+  /*
+   * Colour is never the only differentiator in this system, so each programme
+   * also carries a distinct head SHAPE and a letter. Asserted by filtering to
+   * each programme in turn and collecting what the map draws, because five
+   * programmes cannot all be on screen at one zoom level.
+   */
+  const letters = new Set();
+  for (const programme of ['marriott', 'hilton', 'ihg', 'hyatt', 'gha']) {
+    const chip = page.locator(`[data-testid="stay-filter-${programme}"]`);
+    if ((await chip.count()) === 0) continue;
+    await chip.click();
+    await page.waitForTimeout(1800);
+    const found = await page.evaluate(() => {
+      const seen = [];
+      for (const node of document.querySelectorAll('.maplibregl-marker .mk__letter')) seen.push(node.textContent);
+      return seen;
+    });
+    for (const letter of found) letters.add(letter);
+  }
+  await page.locator('[data-testid="stay-filter-all"]').click();
+  await page.waitForTimeout(1500);
+  check(
+    'each loyalty programme carries its own letter mark',
+    ['M', 'H', 'I', 'Y', 'G'].every((letter) => letters.has(letter)),
+    [...letters].sort().join(''),
+  );
 
   // Hovering a card must emphasise its marker on the map.
   await page.locator('[data-testid="hotel-card-the-st-regis-bali-resort"]').hover();

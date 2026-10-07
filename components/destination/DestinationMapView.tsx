@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { Hotel, Place, PlaceCandidate, UserSavedPlace } from '@/lib/types';
 import type { DoCategory } from '@/lib/store/ui-store';
+import type { MarkerLayer } from '@/lib/types';
 import { getDestinationBundle, isLocatable } from '@/lib/data';
 import { countMarkersByLayer, buildMapMarkers } from '@/lib/map-markers';
 import { useTripStore } from '@/lib/store/trip-store';
@@ -19,6 +20,7 @@ import AreaLayer from '../map/AreaLayer';
 import MapFocusController from '../map/MapFocusController';
 import { useIsDesktop } from '@/lib/hooks';
 import { useT } from '@/lib/i18n/use-t';
+import { hotelLayerVisibility, layerRecord } from '@/lib/layers';
 
 /**
  * The destination map — the dominant surface of every tab.
@@ -46,6 +48,7 @@ export default function DestinationMapView({
   const tab = useUiStore((s) => s.panelTab);
   const locale = useUiStore((s) => s.locale);
   const doCategory = useUiStore((s) => s.doCategory);
+  const stayGroup = useUiStore((s) => s.stayGroup);
   const exploreScope = useUiStore((s) => s.exploreScope);
   const focusedAreaId = useUiStore((s) => s.selectedAreaId);
   const selectedEntityId = useUiStore((s) => s.selectedEntityId);
@@ -170,7 +173,12 @@ export default function DestinationMapView({
     }
 
     if (tab === 'stay') {
-      const visibleLayers = { ...emptyLayers(), marriott: true, hilton: true };
+      const visibleLayers = hotelLayerVisibility();
+      // The programme filter narrows the map, not just the list.
+      if (stayGroup !== 'all') {
+        for (const layer of Object.keys(visibleLayers) as MarkerLayer[]) visibleLayers[layer] = false;
+        visibleLayers[stayGroup] = true;
+      }
       return buildMapMarkers({
         hotels: bundle.hotels,
         places: [],
@@ -178,7 +186,7 @@ export default function DestinationMapView({
         trip: null,
         activeDay: null,
         visibleLayers,
-        filters: defaultFilters(selectedHotelGroup(hoveredEntityId, selectedEntityId, bundle.hotels)),
+        filters: defaultFilters(stayGroup === 'all' ? {} : { hotelGroups: [stayGroup] }),
         selectedEntityId,
         selectedItemId,
         hoveredItemId: hoveredEntityId,
@@ -240,6 +248,7 @@ export default function DestinationMapView({
     hoveredEntityId,
     hoveredItemId,
     areaNameById,
+    stayGroup,
     importPreview,
     previewImportId,
     candidates,
@@ -379,6 +388,7 @@ export default function DestinationMapView({
     doCategory,
     focusedArea?.id,
     bundle,
+    stayGroup,
     activeDay?.id,
     activeDay?.items.length,
     previewImportId,
@@ -520,18 +530,15 @@ function doScope(
   };
 }
 
-function emptyLayers() {
-  return {
-    marriott: false,
-    hilton: false,
-    activity: false,
-    nature: false,
-    beach: false,
-    food: false,
-    nightlife: false,
-    airport: false,
-    transport: false,
-  };
+/**
+ * Every layer off, so a caller switches on exactly what it wants.
+ *
+ * Derived from LAYERS rather than written out: the hand-maintained version had
+ * to be edited in four places every time a loyalty programme was added, and the
+ * failure mode was a hotel that existed but never drew.
+ */
+function emptyLayers(): Record<MarkerLayer, boolean> {
+  return layerRecord(false);
 }
 
 function defaultFilters(overrides = {}) {

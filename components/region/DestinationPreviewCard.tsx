@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import type { Destination, OriginCity } from '@/lib/types';
+import type { Destination, HotelGroupId, OriginCity } from '@/lib/types';
 import type { DestinationStats } from '@/lib/data';
 import { routeSummary } from '@/lib/data';
+import { HOTEL_GROUPS } from '@/lib/data/hotel-brands';
 import { straightLineKm } from '@/lib/geo';
 import { IconArrowRight, IconClose } from '../ui/icons';
 import { useName, useT, useLocale, type Translator } from '@/lib/i18n/use-t';
@@ -45,6 +46,20 @@ function stayRangeLabel(t: Translator, recommended: Destination['recommendedDays
  * the way. Selecting a destination never navigates away from the map, so
  * options can be compared spatially before committing.
  */
+/**
+ * Programme id → the suffix of its message key.
+ *
+ * `t()` needs a literal-ish key, so this is the one place the five programmes are
+ * named in the UI layer. Everything else reads HOTEL_GROUPS.
+ */
+const GROUP_KEY: Record<HotelGroupId, string> = {
+  marriott: 'Marriott',
+  hilton: 'Hilton',
+  ihg: 'Ihg',
+  hyatt: 'Hyatt',
+  gha: 'Gha',
+};
+
 export function DestinationPreviewCard({
   destination,
   stats,
@@ -60,7 +75,16 @@ export function DestinationPreviewCard({
   const locale = useLocale();
   const name = useName();
   const route = routeSummary(origin.id, destination.id);
-  const hasLoyaltyHotels = stats.marriottCount + stats.hiltonCount > 0;
+  /*
+   * Programmes that actually have inventory here, in the registry's order.
+   *
+   * The card used to name Marriott and Hilton explicitly, which quietly said
+   * "these are the only two worth knowing about". It now names whatever is
+   * present, so a destination whose only loyalty option is IHG says so.
+   */
+  const presentGroups = HOTEL_GROUPS.filter((group) => (stats.hotelCountByGroup[group.id] ?? 0) > 0);
+  const loyaltyTotal = presentGroups.reduce((total, group) => total + (stats.hotelCountByGroup[group.id] ?? 0), 0);
+  const hasLoyaltyHotels = loyaltyTotal > 0;
 
   const originName = locale === 'zh-CN' ? origin.cityNameZh : origin.cityNameEn;
   const originCodes = route.originAirports.join(' · ') || origin.airports.map((a) => a.code).join(' · ');
@@ -177,13 +201,16 @@ export function DestinationPreviewCard({
         <p className="text-[11.5px] leading-snug text-muted">
           {hasLoyaltyHotels ? (
             <>
-              <span className="font-medium text-ink-soft tabular-nums">{stats.marriottCount}</span>{' '}
-              {t('stay.filterMarriott')}
-              <span className="mx-1.5 text-line-strong" aria-hidden="true">
-                ·
-              </span>
-              <span className="font-medium text-ink-soft tabular-nums">{stats.hiltonCount}</span>{' '}
-              {t('stay.filterHilton')}
+              <span className="font-medium text-ink-soft tabular-nums">{loyaltyTotal}</span>{' '}
+              {t('region.loyaltyHotels')}
+              {presentGroups.map((group) => (
+                <span key={group.id}>
+                  <span className="mx-1.5 text-line-strong" aria-hidden="true">
+                    ·
+                  </span>
+                  {t(`stay.filter${GROUP_KEY[group.id]}` as MessageKey)}
+                </span>
+              ))}
               <span className="mx-1.5 text-line-strong" aria-hidden="true">
                 ·
               </span>

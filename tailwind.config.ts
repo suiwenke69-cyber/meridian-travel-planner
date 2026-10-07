@@ -32,6 +32,9 @@ const config: Config = {
         // Marker categories (planner map only)
         marriott: '#1C3F5F',
         hilton: '#3A3F4D',
+        ihg: '#8E1B33',
+        hyatt: '#1B6E6A',
+        gha: '#8A6D2F',
         activity: '#B06340',
         nature: '#47794F',
         beach: '#2F7590',

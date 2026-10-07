@@ -9,7 +9,16 @@ import type {
 } from './types';
 import type { MapMarker } from '@/components/map/MarkersLayer';
 import { filterHotels, filterPlaces, type MapFilters } from './filters';
-import { LAYER_BY_ID } from './layers';
+import { LAYER_BY_ID, zeroLayerCounts } from './layers';
+
+/** One letter per programme, matching the map marker and the STAY filter. */
+const HOTEL_GROUP_MARK: Record<string, string> = {
+  marriott: 'M',
+  hilton: 'H',
+  ihg: 'I',
+  hyatt: 'Y',
+  gha: 'G',
+};
 
 /**
  * Turns domain data + the user's plan into the flat marker list the map renders.
@@ -72,17 +81,7 @@ export function buildMapMarkers(input: MarkerBuildInput): BuiltMarkers {
   });
 
   const markers: MapMarker[] = [];
-  const counts: Record<MarkerLayer, number> = {
-    marriott: 0,
-    hilton: 0,
-    activity: 0,
-    nature: 0,
-    beach: 0,
-    food: 0,
-    nightlife: 0,
-    airport: 0,
-    transport: 0,
-  };
+  const counts: Record<MarkerLayer, number> = zeroLayerCounts();
 
   const hotelsInScope = filterHotels(hotels, filters, areaNameById);
   const placesInScope = filterPlaces(places, filters, areaNameById);
@@ -95,7 +94,16 @@ export function buildMapMarkers(input: MarkerBuildInput): BuiltMarkers {
   // `counts` reflects what passes the FILTERS (the legend shows inventory);
   // `visibleLayers` separately controls whether the layer is drawn.
   for (const hotel of hotels) {
-    const layer: MarkerLayer = hotel.hotelGroup === 'marriott' ? 'marriott' : 'hilton';
+    /*
+     * The programme IS the layer.
+     *
+     * This read `hotelGroup === 'marriott' ? 'marriott' : 'hilton'`, so every
+     * IHG, Hyatt and GHA property was drawn as a HILTON marker — invisible when
+     * its own layer was switched on, and mislabelled as the wrong programme on
+     * the map. The counts were fixed first; this was the half that actually
+     * decides what the marker looks like.
+     */
+    const layer: MarkerLayer = hotel.hotelGroup;
     if (!hotelIdsInScope.has(hotel.id)) continue;
     counts[layer] += 1;
     if (!visibleLayers[layer]) continue;
@@ -108,7 +116,9 @@ export function buildMapMarkers(input: MarkerBuildInput): BuiltMarkers {
       layer,
       label: hotel.name,
       sublabel: `${hotel.brand} · ${areaNameById.get(hotel.areaId) ?? hotel.areaId} · ${hotel.priceTier}`,
-      groupMark: hotel.hotelGroup === 'marriott' ? 'M' : 'H',
+      // Same source as the head letter, so the badge and the silhouette cannot
+      // disagree about which programme a marker belongs to.
+      groupMark: HOTEL_GROUP_MARK[hotel.hotelGroup],
       order: inActiveDay?.order,
       selected: selectedEntityId === hotel.id || selectedItemId === inActiveDay?.item.id,
       emphasised:
@@ -214,19 +224,10 @@ export function countMarkersByLayer(
   filters: MapFilters,
   areaNameById: Map<string, string>,
 ): Record<MarkerLayer, number> {
-  const counts: Record<MarkerLayer, number> = {
-    marriott: 0,
-    hilton: 0,
-    activity: 0,
-    nature: 0,
-    beach: 0,
-    food: 0,
-    nightlife: 0,
-    airport: 0,
-    transport: 0,
-  };
+  const counts: Record<MarkerLayer, number> = zeroLayerCounts();
   for (const hotel of filterHotels(hotels, filters, areaNameById)) {
-    counts[hotel.hotelGroup === 'marriott' ? 'marriott' : 'hilton'] += 1;
+    // The programme IS the layer, so this cannot drift as programmes are added.
+    counts[hotel.hotelGroup] += 1;
   }
   for (const place of filterPlaces(places, filters, areaNameById)) {
     counts[place.markerLayer] += 1;

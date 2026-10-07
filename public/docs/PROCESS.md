@@ -1396,3 +1396,173 @@ assertion that failed on a comment naming the key it does not read.
    components, but it has not been done.
 6. **Twenty images is a ceiling, not a target.** A very long image-heavy guide has
    to be imported in parts, and the UI says so rather than silently truncating.
+
+---
+
+# Iteration 8 — ten destinations, five loyalty programmes
+
+## 1. The audit that changed the plan
+
+The brief was to bring the other nine destinations up to Bali's depth and add IHG,
+Hyatt and GHA. Before authoring anything, I wrote a coordinate verifier to check the
+existing data — and it found that **73 of Bali's 145 places shared a coordinate with
+at least one other record**, most of them labelled `confidence: "verified"` with a
+`coordNote` that named a *different* venue. `La Lucciola`, `Merah Putih` and
+`Betelnut Café` all sat on Merah Putih's point; nine places sat on The Lawn Canggu's.
+
+That is worse than a gap. A card claiming a source, sitting on somebody else's
+doorway, is a lie the traveller cannot detect — and on the map it drew nine markers
+stacked on one spot. So the order of work changed: fix Bali first, then expand, with
+the verifier as the gate for everything new.
+
+## 2. What the verifier does
+
+`scripts/verify-coords.mts` runs three passes, cheapest first:
+
+1. **Bounds** — is the point inside its destination's own box? Offline, instant, and
+   it catches the most common real failure, a copy-paste from the wrong country.
+2. **Collisions** — two records of the same kind within 30 m. Cross-kind coincidence
+   is normal and only warns: an area's centre is very often the beach inside it.
+3. **Reverse geocode** — optional, rate-limited, asks Nominatim what is actually there.
+
+It also now mirrors `isLocatable()`: a record marked `demo` is *unlocatable*, not
+misplaced, and bounds-checking one reports the Gulf of Guinea as a data error. The
+first run produced 28 phantom collisions from eight such records.
+
+`validate-data.ts` gained the same rule permanently, so two records sharing a point
+can never ship again.
+
+## 3. Correcting 73 coordinates, and refusing a false match
+
+The corrections were researched by six independent workers using
+`scripts/lookup-place.mjs`, which I rewrote twice during the run:
+
+- **Nominatim IP-blocked the machine.** Six workers at one request per second each
+  exceeded a limit that applies to the machine, and the endpoint answered 429 to
+  everyone. Fixed two ways: a **cross-process rate limiter** (a shared lock file, so
+  concurrent authors serialize rather than stampede), and two more sources serving
+  the same OpenStreetMap objects — **Photon** first, **Overpass** second, Nominatim
+  last.
+- **The tool produced false matches.** Searching "Courtyard Hanoi" matched the OSM
+  *city node* "Hanoi", because the name gate accepted a candidate whose name was a
+  substring of the query; six hotels were nearly pinned on the city centroid. It now
+  rejects generic place types (city, suburb, district, island…) and requires the
+  candidate to be the whole query or a substantial part of it. A locality gate was
+  added for the same reason: "Anomali Coffee Sanur" resolved to a different branch
+  10 km away.
+- **The cache corrupted itself.** Concurrent read-modify-write produced a file that
+  was valid JSON for 156 KB followed by a truncated fragment, and every later run
+  died before starting. Writes now go through a temporary file and a rename.
+
+Every correction is a reviewable entry in
+`lib/data/destinations/extra/coord-corrections.ts`, and it records *why*. The
+hand-made decisions live in a separate file, `coord-corrections-manual.ts`, because
+the first time the generated half was re-merged it silently deleted them.
+
+The honest outcomes were not all corrections. Eight records are now **unlocatable**:
+a generic "surf school" label, a "water sports" label, two transfer products that
+depart from a harbour that already has its own record, and four venues no source
+could place. They disappear from the map and the itinerary, which is better than a
+marker on somebody else's doorstep. Bali's `approximate` count went from a claimed
+zero to 28 — the same data, described accurately.
+
+## 4. Five loyalty programmes
+
+`HotelGroupId` went from two values to five, and the type system found every place
+that needed updating — which is exactly why it is a union rather than a string:
+
+- **Marriott Bonvoy, Hilton Honors, IHG One Rewards, World of Hyatt, GHA DISCOVERY**
+- 73 brands in the registry, including Hyatt's soft brands (Unbound Collection,
+  Destination, JdV), IHG's Vignette Collection, and 15 GHA members.
+
+**GHA is modelled as an alliance, not a hotel company.** Its members are
+independently owned brands sharing one loyalty scheme, and the filter row says 联盟
+next to it rather than implying a parent group that does not exist — the same
+honesty the dataset already applied to SLH as a Hilton partner.
+
+**Five programmes, five shapes.** Colour was never the only differentiator in this
+marker system, and five programmes on one island is exactly where that rule earns
+its keep: M is a rounded square, H a circle, I a hexagon, Y a diamond, G a shield,
+each with its own letter. At 26 px, in greyscale, or for a colour-blind reader, five
+coloured circles would be indistinguishable.
+
+Two bugs here were only findable in a browser. The **STAY filter narrowed the list
+but not the map**, because the filter was component state the map could not read —
+so the panel said "Hyatt" while every programme stayed drawn. And
+`buildMapMarkers` assigned the marker layer with
+`hotelGroup === 'marriott' ? 'marriott' : 'hilton'`, so every IHG, Hyatt and GHA
+property was drawn as a **Hilton** marker: invisible when its own layer was on, and
+mislabelled as the wrong programme. The counts had been fixed; the half that decides
+what a marker looks like had not.
+
+## 5. Where a target was wrong
+
+Ten authors were given targets and told, repeatedly, that **a target is not a
+quota**. Several reported shortfalls instead of filling them, and each was right:
+
+- **Phu Quoc has 7 loyalty hotels, not 12.** Conrad, Hilton and DoubleTree Phu Quoc
+  are signed-but-unbuilt APEC-2027 projects; Park Hyatt opens in 2027; GHA's Vietnam
+  members are all on the mainland.
+- **Cebu has 5.** Crowne Plaza and InterContinental Cebu do not exist; the former
+  Hilton is now a Mövenpick; Courtyard Cebu never opened.
+- **Boracay has 1 and Palawan has 1.** Both were verified against the brands' own
+  location lists. Boracay's upscale inventory is domestic — Shangri-La, Crimson,
+  Henann, Discovery Shores — and maps to no programme.
+- **Phnom Penh has 5.** Hilton has exactly one hotel in the whole of Cambodia, in
+  Siem Reap.
+
+Those are findings, and they are in the report rather than papered over with invented
+properties. Completing the set also required three small registry additions that real
+authors were blocked on: Hyatt's soft brands, IHG's Vignette Collection, and
+`sunway` — the only GHA member in Phnom Penh.
+
+## 6. Other real bugs the expansion surfaced
+
+- **Extra areas were registered globally but never attached to their destination.**
+  A newly authored area had coordinates and hotels referencing it, while the EXPLORE
+  panel, the area list and the validator's own referenced-area check all read
+  `destination.areas` and could not see it. The symptom was `areaId "vung-bau" does
+  not exist` for an area sitting right there in the dataset.
+- **`El Kabron` was two records** — once as a restaurant, once as a cliff club —
+  putting two markers on one cliff. Deduplicated, with the surviving record carrying
+  the union of the categories.
+- **`Pro Surf School Bali` was filed under Uluwatu**, 20 km from the Kuta street it
+  is on.
+- **The validator's duplicate-property rule compared coordinates only**, which
+  worked for forty hotels and flagged neighbours at five: the Holiday Inn and Hilton
+  Garden Inn on Nusa Dua's Jalan Pratama are 120 m apart, and three Saigon and Hanoi
+  pairs are 96–134 m apart. A duplicate shares an *identity* — same name or same
+  brand — not just a street.
+- **The STAY subtitle said "Bali's Marriott and Hilton hotels" on the Hanoi page.**
+  Stale copy from a two-programme, one-destination dataset.
+- **The STAY panel's `hotelGroup must be marriott or hilton` check** in the
+  validator would have rejected every new hotel for being correct.
+
+## 7. After this pass
+
+**10 destinations · 117 areas · 97 loyalty hotels · 446 places** — from 48 areas,
+42 hotels and 216 places, all ten now at reference tier.
+
+- `npx tsc --noEmit` — clean.
+- `npm run validate:data` — passes, 0 errors.
+- `npm run verify:coords` — **652 coordinates, 0 failures**, 29 expected cross-kind
+  coincidences, 8 deliberately unlocatable.
+- `npm run test:social` — 224/224.
+- `npm run test:e2e` — 174/174, zero console errors.
+- `npm run build` and `npm run build:static` — both pass.
+
+## Known limitations after this pass
+
+1. **Five programmes, not all of them.** Accor Live Limitless and Wyndham Rewards are
+   absent rather than half-populated. A programme earns its place by having enough
+   real inventory in Southeast Asia to change where somebody stays.
+2. **Some destinations are genuinely thin.** Boracay has one loyalty hotel, Palawan
+   one. That is the verified ceiling, not an omission, and the coverage table says so.
+3. **28 of Bali's 145 places are not confidently located** — 20 approximate and 8
+   unlocatable. Nearly all the approximate ones are small restaurants that no OSM
+   mapper has surveyed, positioned at street level from their published address.
+4. **Photography did not grow with the data.** The new hotels and places have no
+   licensed imagery, so their cards fall back to the no-photograph state rather than
+   borrowing a neighbour's picture.
+5. **Overpass was unreachable for part of the run**, so some address lookups fell back
+   to Nominatim street geocoding or were dropped.

@@ -43,3 +43,9 @@ yarn-error.log*
 
 # image fetch cache
 /scripts/.cache/
+
+# Tool-generated caches for the coordinate audit (never committed)
+scripts/.lookup-cache.json
+scripts/.lookup-lock
+scripts/.coord-cache.json
+lib/data/destinations/extra/__tmp-*.ts

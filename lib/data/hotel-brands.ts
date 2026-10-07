@@ -52,6 +52,73 @@ export const HOTEL_BRANDS: HotelBrand[] = [
     positioning: 'luxury',
     loyaltyProgramme: 'Hilton Honors',
   },
+
+  // --- IHG One Rewards ------------------------------------------------------
+  { id: 'six-senses', name: 'Six Senses', group: 'ihg', positioning: 'ultra-luxury', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'regent', name: 'Regent', group: 'ihg', positioning: 'ultra-luxury', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'intercontinental', name: 'InterContinental', group: 'ihg', positioning: 'luxury', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'kimpton', name: 'Kimpton', group: 'ihg', positioning: 'luxury', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'voco', name: 'voco', group: 'ihg', positioning: 'upper-upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'hotel-indigo', name: 'Hotel Indigo', group: 'ihg', positioning: 'upper-upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'crowne-plaza', name: 'Crowne Plaza', group: 'ihg', positioning: 'upper-upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'even-hotels', name: 'EVEN Hotels', group: 'ihg', positioning: 'upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'holiday-inn', name: 'Holiday Inn', group: 'ihg', positioning: 'upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'holiday-inn-resort', name: 'Holiday Inn Resort', group: 'ihg', positioning: 'upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'staybridge', name: 'Staybridge Suites', group: 'ihg', positioning: 'upscale', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'holiday-inn-express', name: 'Holiday Inn Express', group: 'ihg', positioning: 'select', loyaltyProgramme: 'IHG One Rewards' },
+  { id: 'vignette-collection', name: 'Vignette Collection', group: 'ihg', positioning: 'luxury', loyaltyProgramme: 'IHG One Rewards' },
+
+  // --- World of Hyatt -------------------------------------------------------
+  { id: 'park-hyatt', name: 'Park Hyatt', group: 'hyatt', positioning: 'ultra-luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'alila', name: 'Alila', group: 'hyatt', positioning: 'ultra-luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'andaz', name: 'Andaz', group: 'hyatt', positioning: 'luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'thompson', name: 'Thompson Hotels', group: 'hyatt', positioning: 'luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'grand-hyatt', name: 'Grand Hyatt', group: 'hyatt', positioning: 'luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'hyatt-regency', name: 'Hyatt Regency', group: 'hyatt', positioning: 'upper-upscale', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'hyatt-centric', name: 'Hyatt Centric', group: 'hyatt', positioning: 'upper-upscale', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'caption', name: 'Caption by Hyatt', group: 'hyatt', positioning: 'upscale', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'hyatt-place', name: 'Hyatt Place', group: 'hyatt', positioning: 'select', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'hyatt-house', name: 'Hyatt House', group: 'hyatt', positioning: 'select', loyaltyProgramme: 'World of Hyatt' },
+  /**
+   * Hyatt's soft brands.
+   *
+   * Added after an author found Nam Nghi Phu Quoc — the only Hyatt-affiliated
+   * OPEN property on that island — and correctly refused to write it, because
+   * there was no brandId for the collection it belongs to. A registry that is
+   * missing a real brand does not make the hotel disappear; it makes the author
+   * either drop a real property or file it under the wrong brand. Both are worse
+   * than one more line here.
+   */
+  { id: 'unbound-collection', name: 'The Unbound Collection by Hyatt', group: 'hyatt', positioning: 'luxury', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'destination-by-hyatt', name: 'Destination by Hyatt', group: 'hyatt', positioning: 'upper-upscale', loyaltyProgramme: 'World of Hyatt' },
+  { id: 'jdv-by-hyatt', name: 'JdV by Hyatt', group: 'hyatt', positioning: 'upscale', loyaltyProgramme: 'World of Hyatt' },
+
+  // --- GHA DISCOVERY --------------------------------------------------------
+  /**
+   * GHA is a CONSORTIUM, not a hotel company.
+   *
+   * Its members are independently owned or independently managed brands that
+   * share one loyalty programme and one cross-brand recognition scheme. Modelled
+   * as its own programme because that is how a traveller actually experiences it
+   * — one GHA DISCOVERY account across Anantara, Kempinski and Pan Pacific — and
+   * the UI says "alliance" rather than implying a parent company that does not
+   * exist. Same honesty as the SLH entry above.
+   */
+  { id: 'anantara', name: 'Anantara', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'kempinski', name: 'Kempinski', group: 'gha', positioning: 'ultra-luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'avani', name: 'Avani', group: 'gha', positioning: 'upper-upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'capella', name: 'Capella', group: 'gha', positioning: 'ultra-luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'fullerton', name: 'The Fullerton', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'pan-pacific', name: 'Pan Pacific', group: 'gha', positioning: 'upper-upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'parkroyal', name: 'PARKROYAL', group: 'gha', positioning: 'upper-upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'oasia', name: 'Oasia', group: 'gha', positioning: 'upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'niccolo', name: 'Niccolo', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'marcopolo', name: 'Marco Polo', group: 'gha', positioning: 'upper-upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'tivoli', name: 'Tivoli', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'viceroy', name: 'Viceroy', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'sunway', name: 'Sunway Hotels & Resorts', group: 'gha', positioning: 'upper-upscale', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'kata-rocks', name: 'Kata Rocks', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
+  { id: 'sinae', name: 'Sinae', group: 'gha', positioning: 'luxury', loyaltyProgramme: 'GHA DISCOVERY' },
 ];
 
 const BY_ID = new Map(HOTEL_BRANDS.map((b) => [b.id, b]));
@@ -84,9 +151,19 @@ export function inferPriceTier(brandId: string): { tier: '$' | '$$' | '$$$' | '$
   };
 }
 
+/**
+ * The five programmes, in the order the STAY filter and the legend show them.
+ *
+ * `alliance` is true only for GHA: its "brands" are independent companies that
+ * share a loyalty scheme, and the UI labels it accordingly rather than implying
+ * a parent group.
+ */
 export const HOTEL_GROUPS = [
-  { id: 'marriott' as const, name: 'Marriott Bonvoy', short: 'Marriott', programme: 'Marriott Bonvoy', color: '#123A5C' },
-  { id: 'hilton' as const, name: 'Hilton Honors', short: 'Hilton', programme: 'Hilton Honors', color: '#33384A' },
+  { id: 'marriott' as const, name: 'Marriott Bonvoy', short: 'Marriott', programme: 'Marriott Bonvoy', color: '#123A5C', alliance: false },
+  { id: 'hilton' as const, name: 'Hilton Honors', short: 'Hilton', programme: 'Hilton Honors', color: '#33384A', alliance: false },
+  { id: 'ihg' as const, name: 'IHG One Rewards', short: 'IHG', programme: 'IHG One Rewards', color: '#8E1B33', alliance: false },
+  { id: 'hyatt' as const, name: 'World of Hyatt', short: 'Hyatt', programme: 'World of Hyatt', color: '#1B6E6A', alliance: false },
+  { id: 'gha' as const, name: 'GHA DISCOVERY', short: 'GHA', programme: 'GHA DISCOVERY', color: '#8A6D2F', alliance: true },
 ];
 
 export function getHotelGroup(id: string) {

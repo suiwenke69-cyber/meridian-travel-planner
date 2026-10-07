@@ -75,6 +75,9 @@ const LAYER_FALLBACK: Record<string, string[]> = {
   transport: [],
   marriott: [],
   hilton: [],
+  ihg: [],
+  hyatt: [],
+  gha: [],
 };
 
 /** Which DO categories a place appears under. */
@@ -143,6 +146,21 @@ export const CUISINES: Record<string, Bilingual> = {
   'warung-local': { zh: '本地家常', en: 'Local home-style' },
   bakery: { zh: '烘焙', en: 'Bakery' },
   healthy: { zh: '健康轻食', en: 'Healthy bowls' },
+  /*
+   * Added when the other nine destinations were brought to Bali's depth.
+   *
+   * A cuisine id is part of the place record, so a Vietnamese restaurant had
+   * nothing legal to declare itself as — the first Vietnamese records were
+   * rejected by the validator for using a "vietnamese" id that did not exist.
+   * These are the cuisines the dataset now actually contains.
+   */
+  vietnamese: { zh: '越南菜', en: 'Vietnamese' },
+  'vietnamese-street': { zh: '越南街头小吃', en: 'Vietnamese street food' },
+  khmer: { zh: '高棉菜', en: 'Khmer' },
+  filipino: { zh: '菲律宾菜', en: 'Filipino' },
+  international: { zh: '国际菜', en: 'International' },
+  thai: { zh: '泰国菜', en: 'Thai' },
+  vegetarian: { zh: '素食', en: 'Vegetarian' },
 };
 
 export function cuisineLabel(id: string, locale: 'zh-CN' | 'en'): string {

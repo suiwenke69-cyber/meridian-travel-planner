@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Xiaohongshu-only guide import with text + image analysis, multi-city origins, Simplified Chinese primary, Bali the reference destination. No live data.",
+  "status": "V1 — working end to end. Ten destinations at reference tier, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis. No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -44,22 +44,11 @@
   },
   "dataScope": {
     "destinations": 10,
-    "areas": 48,
-    "loyaltyHotels": 42,
-    "places": 216,
-    "placesWithApproximateCoordinates": 5,
-    "hotelGroups": [
-      "Marriott Bonvoy",
-      "Hilton Honors"
-    ],
-    "pricesShown": "none — hotel cost is a brand-positioning tier whose basis is displayed",
-    "verificationMethod": "Wikidata bounding-box queries, Wikipedia coordinates API, OpenStreetMap element ids; every record keeps its source",
-    "baliHotels": 20,
-    "baliAreas": 15,
-    "baliPlaces": 145,
-    "baliRestaurants": 46,
-    "baliActivities": 51,
-    "baliPlacesLocatable": 139
+    "areas": 117,
+    "loyaltyHotels": 97,
+    "places": 446,
+    "placesWithApproximateCoordinates": 31,
+    "note": "All ten destinations are reference tier. Where a destination has fewer loyalty hotels — Boracay 1, Palawan 1, Phnom Penh 5 — that is the verified ceiling, not an omission."
   },
   "correctionsFoundDuringVerification": [
     "Bali has only five Hilton-branded hotels; a DoubleTree in the first draft does not exist and was removed",
@@ -79,45 +68,34 @@
     "MapLibre's worker failed to load under the bundler, leaving a blank canvas with no error"
   ],
   "testResults": {
-    "e2e": {
-      "checks": 172,
-      "passed": 172,
-      "failed": 0,
-      "consoleErrors": 0,
-      "pageErrors": 0,
-      "failedRequests": 0
-    },
+    "typecheck": "tsc --noEmit clean",
+    "dataValidation": "passes: 0 errors, 117 areas / 97 hotels / 446 places",
+    "coordinateAudit": "0 failures",
     "socialImport": {
       "checks": 224,
-      "passed": 224,
-      "failed": 0,
-      "command": "npm run test:social"
+      "passed": 224
     },
-    "typecheck": "tsc --noEmit clean",
-    "dataValidation": "passes",
-    "productionBuild": "passes; 10 destinations pre-rendered",
-    "staticExport": "passes; app/api stashed and restored, MapLibre worker present",
-    "visual": "scripts/shots-xhs.mjs at 1440x900 and 390x844, inspected by hand, 0 console errors"
+    "e2e": {
+      "checks": 185,
+      "passed": 185,
+      "consoleErrors": 0
+    },
+    "productionBuild": "passes; 10 destinations pre-rendered"
   },
   "knownLimitations": [
-    "64 of 110 connections are curated route knowledge, not verified schedules; they are marked 待确认 and carry a curation date",
-    "Nothing refreshes connection data automatically — verifiedAt exists so a review can be built, and has not been",
-    "No multimodal analysis has run against a real vision key; the prompt and contract are tested, the output quality is not",
-    "IMAGE_PROPOSAL_FLOOR (0.6) is a judgement, not a measurement against a labelled set",
-    "No approved Xiaohongshu retrieval provider is configured anywhere, so the fallback is the product",
-    "Only Xiaohongshu is supported; TikTok, Instagram, Douyin, YouTube and blog import are out of scope",
-    "Imported images and saved places live in one browser (IndexedDB + localStorage); there are no accounts",
-    "The 97 Bali restaurants and activities still have no photography, and six places still have no verified location",
-    "Only Bali is deep; the other nine destinations are architecturally complete but thin",
-    "No prices anywhere — hotel cost is a positioning tier with its basis displayed",
-    "Traffic is not modelled; measured legs are free-flow estimates"
+    "Five loyalty programmes, not every programme: Accor Live Limitless and Wyndham Rewards are absent rather than half-populated.",
+    "Boracay has one loyalty hotel and Palawan one; both verified against the brands own location lists, not omissions.",
+    "28 of Bali 145 places are approximate or unlocatable after the coordinate audit, down from a claimed-verified 145.",
+    "Saved places, imports and images live in one browser; there are no accounts.",
+    "No prices anywhere — hotel cost is a positioning tier with its basis displayed.",
+    "Traffic is not modelled; measured legs are free-flow estimates."
   ],
   "documents": {
     "process": "/docs/PROCESS.md",
     "readme": "/docs/README.md",
     "roadmap": "/docs/ROADMAP.md",
     "browsableDossier": "/process",
-    "dossierLines": "PROCESS.md documents the original build, the destination redesign, the origin iteration, and the Xiaohongshu import"
+    "dossierLines": "PROCESS.md documents every iteration: the destination redesign, the origin model, the Xiaohongshu import, and the ten-destination data expansion."
   },
   "destinationExperience": {
     "navigation": [
@@ -399,5 +377,50 @@
     "originCityId": "Trips store where they depart from.",
     "migration": "A zustand version-1 migration stamps singapore on trips saved before origins existed, plus a hydrate backstop for payloads with no version field. Days, items and dates are untouched."
   },
-  "localizedArrays": "bestFor, weakFor and tags carry positionally-aligned Chinese variants. The validator checks alignment, because pickList falls back per index and a mismatch degrades into a half-Chinese line that reads as a bug."
+  "localizedArrays": "bestFor, weakFor and tags carry positionally-aligned Chinese variants. The validator checks alignment, because pickList falls back per index and a mismatch degrades into a half-Chinese line that reads as a bug.",
+  "loyaltyProgrammes": {
+    "count": 5,
+    "programmes": [
+      {
+        "id": "marriott",
+        "name": "Marriott Bonvoy",
+        "brands": 19
+      },
+      {
+        "id": "hilton",
+        "name": "Hilton Honors",
+        "brands": 13
+      },
+      {
+        "id": "ihg",
+        "name": "IHG One Rewards",
+        "brands": 13
+      },
+      {
+        "id": "hyatt",
+        "name": "World of Hyatt",
+        "brands": 13
+      },
+      {
+        "id": "gha",
+        "name": "GHA DISCOVERY",
+        "brands": 15,
+        "alliance": true
+      }
+    ],
+    "totalBrands": 73,
+    "markerSystem": "Five programmes, five head shapes and five letters (M rounded square, H circle, I hexagon, Y diamond, G shield). Colour is never the only differentiator.",
+    "ghaIsAnAlliance": "GHA DISCOVERY is a consortium, not a hotel company: its members are independently owned brands sharing one loyalty scheme. Labelled 联盟 in the filter row."
+  },
+  "coordinateAudit": {
+    "script": "scripts/verify-coords.mts",
+    "checks": [
+      "destination bounds",
+      "same-kind coordinate collisions",
+      "optional reverse geocode"
+    ],
+    "result": "652 coordinates, 0 failures, 29 expected cross-kind coincidences, 8 deliberately unlocatable",
+    "bugItFound": "73 of Bali 145 places shared a coordinate with another record, most labelled \"verified\" and carrying a coordNote that named the OTHER venue. Fixed via 73 audited corrections in lib/data/destinations/extra/coord-corrections.ts.",
+    "permanentGuard": "validate-data.ts now fails on any two same-kind records sharing a coordinate."
+  }
 }

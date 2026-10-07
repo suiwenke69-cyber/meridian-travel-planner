@@ -22,7 +22,7 @@ import {
   destinationStats,
 } from '../lib/data/index';
 import { readFileSync } from 'node:fs';
-import { HOTEL_BRANDS } from '../lib/data/hotel-brands';
+import { HOTEL_BRANDS, HOTEL_GROUPS } from '../lib/data/hotel-brands';
 import {
   ACTIVITY_KINDS,
   CUISINES,
@@ -148,8 +148,17 @@ for (const hotel of getAllHotels()) {
   if (/\d{2,}[.,]?\d*\s*(IDR|USD|SGD|VND|PHP|THB|MYR|KHR)/i.test(hotel.description)) {
     err(`${hotel.destinationId}/${hotel.id}: description appears to contain a price`);
   }
-  if (hotel.hotelGroup !== 'marriott' && hotel.hotelGroup !== 'hilton') {
-    err(`${hotel.destinationId}/${hotel.id}: hotelGroup must be marriott or hilton`);
+  /*
+   * Checked against the registry rather than a written-out pair.
+   *
+   * This rule said "must be marriott or hilton", which was true when there were
+   * two programmes and became a false alarm the moment IHG, Hyatt and GHA were
+   * added — every new hotel would have failed validation for being correct.
+   */
+  if (!HOTEL_GROUPS.some((group) => group.id === hotel.hotelGroup)) {
+    err(
+      `${hotel.destinationId}/${hotel.id}: hotelGroup "${hotel.hotelGroup}" is not one of ${HOTEL_GROUPS.map((g) => g.id).join(', ')}`,
+    );
   }
   if (!hotel.coordinates.confidence) err(`${hotel.destinationId}/${hotel.id}: missing coordinate confidence`);
 }
@@ -163,20 +172,44 @@ for (const hotel of getAllHotels()) {
  * STAY list simply showed the hotel twice. Same brand plus the same spot on the
  * map is a duplicate.
  */
-const hotelSites = new Map<string, { id: string; name: string }>();
+/*
+ * Proximity alone is not duplication.
+ *
+ * The original rule compared coordinates only, and that worked while the dataset
+ * had forty hotels. With five programmes and real inventory it started flagging
+ * NEIGHBOURS: the Holiday Inn and the Hilton Garden Inn on Nusa Dua's Jalan
+ * Pratama are 120 m apart, Renaissance Riverside and the Hilton are 104 m apart
+ * on Saigon's waterfront, and the InterContinental and the JW Marriott are 96 m
+ * apart. All four are genuinely different properties, each with its own OSM
+ * object, and all four were reported as "the same property plotted twice".
+ *
+ * A duplicate shares an identity, not just a street: it has the same brand, or
+ * the same name once punctuation is stripped. That is what the real bug looked
+ * like — "Four Points by Sheraton Bali, Ungasan" twice, same brand, same name,
+ * same point. Requiring one of those keeps the guard and drops the false alarms.
+ */
+const normaliseHotelName = (value: string) => value.toLowerCase().replace(/[^a-z0-9\u3400-\u9fff]/g, '');
+const hotelSites: Array<{ id: string; name: string; brandId: string; lat: number; lng: number; destinationId: string }> = [];
 for (const hotel of getAllHotels()) {
-  for (const [key, seen] of hotelSites) {
-    const [destinationId, lat, lng] = key.split('|');
-    if (destinationId !== hotel.destinationId) continue;
-    if (haversineKm({ lat: Number(lat), lng: Number(lng) }, hotel.coordinates) > 0.15) continue;
+  for (const seen of hotelSites) {
+    if (seen.destinationId !== hotel.destinationId) continue;
+    if (haversineKm({ lat: seen.lat, lng: seen.lng }, hotel.coordinates) > 0.15) continue;
+    const sameName = normaliseHotelName(seen.name) === normaliseHotelName(hotel.name);
+    const sameBrand = seen.brandId === hotel.brandId;
+    if (!sameName && !sameBrand) continue;
+    const metres = Math.round(haversineKm({ lat: seen.lat, lng: seen.lng }, hotel.coordinates) * 1000);
     err(
-      `${hotel.destinationId}: "${hotel.id}" and "${seen.id}" are the same property plotted twice ` +
-        `(${hotel.brandId} at the same coordinates) — the STAY list will show it twice`,
+      `${hotel.destinationId}: "${hotel.id}" and "${seen.id}" look like the same property plotted twice ` +
+        `(${sameName ? 'same name' : `same brand ${hotel.brandId}`}, ${metres} m apart) — the STAY list will show it twice`,
     );
   }
-  hotelSites.set(`${hotel.destinationId}|${hotel.coordinates.lat}|${hotel.coordinates.lng}`, {
+  hotelSites.push({
     id: hotel.id,
     name: hotel.name,
+    brandId: hotel.brandId,
+    lat: hotel.coordinates.lat,
+    lng: hotel.coordinates.lng,
+    destinationId: hotel.destinationId,
   });
 }
 
@@ -567,6 +600,50 @@ for (const place of getAllPlaces()) {
   }
 }
 
+// --- 6f. two records may not share a coordinate ----------------------------
+/*
+ * This rule exists because Bali shipped with 73 of its 145 places sharing a
+ * coordinate with another record. An earlier authoring pass looked one venue up
+ * successfully and then assigned the same point to its neighbours, all of them
+ * labelled `confidence: "verified"` — so the map drew nine markers stacked on one
+ * spot and every one of those cards claimed a source.
+ *
+ * A duplicate coordinate is almost never correct. Two different hotels are not at
+ * the same address; two different restaurants are not behind the same door. When
+ * it IS legitimate — an area whose centre is the beach inside it — the records are
+ * of different kinds, so the check is per-kind.
+ */
+{
+  const KINDS = ['hotel', 'place'] as const;
+  for (const destination of DESTINATIONS) {
+    const byKind: Record<string, Array<{ id: string; name: string; lat: number; lng: number }>> = {
+      hotel: getAllHotels()
+        .filter((h) => h.destinationId === destination.id)
+        .map((h) => ({ id: h.id, name: h.name, ...h.coordinates })),
+      place: getAllPlaces()
+        .filter((p) => p.destinationId === destination.id)
+        .map((p) => ({ id: p.id, name: p.name, ...p.coordinates })),
+    };
+    for (const kind of KINDS) {
+      const seen = new Map<string, { id: string; name: string }>();
+      for (const record of byKind[kind]) {
+        // An unlocatable record is deliberately at 0,0 and is excluded everywhere.
+        if (record.lat === 0 && record.lng === 0) continue;
+        const key = `${record.lat.toFixed(5)},${record.lng.toFixed(5)}`;
+        const previous = seen.get(key);
+        if (previous) {
+          err(
+            `${destination.id}: ${kind}s "${previous.name}" (${previous.id}) and "${record.name}" (${record.id}) share the coordinate ${key}`,
+          );
+        } else {
+          seen.set(key, { id: record.id, name: record.name });
+        }
+      }
+    }
+  }
+  console.log('  no two records of the same kind share a coordinate');
+}
+
 // --- 7. destination coverage summary ---------------------------------------
 const summary = DESTINATIONS.map((d) => {
   const stats = destinationStats(d.id);
@@ -574,20 +651,36 @@ const summary = DESTINATIONS.map((d) => {
     id: d.id,
     status: d.status,
     areas: stats.areaCount,
-    marriott: stats.marriottCount,
-    hilton: stats.hiltonCount,
+    groups: stats.hotelCountByGroup,
     places: stats.placeCount,
     approximate: stats.approximateCount,
   };
 });
 
 console.log('\nDestination coverage\n');
+/*
+ * One column per loyalty programme, generated from the registry.
+ *
+ * Written out as M/H this table would silently keep printing two columns while
+ * five programmes shipped — the exact "looks fine, says nothing" failure the
+ * coverage table exists to prevent.
+ */
+const PROGRAMME_COLUMNS = HOTEL_GROUPS.map((group) => ({ id: group.id, head: group.short.slice(0, 4) }));
 console.log(
-  ['id', 'status', 'areas', 'M', 'H', 'places', 'approx'].map((h) => h.padEnd(10)).join(''),
+  ['id', 'status', 'areas', ...PROGRAMME_COLUMNS.map((c) => c.head), 'places', 'approx']
+    .map((h) => h.padEnd(10))
+    .join(''),
 );
 for (const row of summary) {
   console.log(
-    [row.id, row.status, row.areas, row.marriott, row.hilton, row.places, row.approximate]
+    [
+      row.id,
+      row.status,
+      row.areas,
+      ...PROGRAMME_COLUMNS.map((column) => row.groups[column.id] ?? 0),
+      row.places,
+      row.approximate,
+    ]
       .map((v) => String(v).padEnd(10))
       .join(''),
   );
@@ -597,7 +690,7 @@ const totals = summary.reduce(
   (acc, row) => ({
     destinations: acc.destinations + 1,
     areas: acc.areas + row.areas,
-    hotels: acc.hotels + row.marriott + row.hilton,
+    hotels: acc.hotels + Object.values(row.groups).reduce((sum, count) => sum + count, 0),
     places: acc.places + row.places,
     approximate: acc.approximate + row.approximate,
   }),
