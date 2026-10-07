@@ -9,6 +9,9 @@ import * as phnomPenh from './phnom-penh';
 import * as cebu from './cebu';
 import * as boracay from './boracay';
 import * as palawan from './palawan';
+// Malaysia — added after the ten-destination pass.
+import * as penang from './penang';
+import * as kualaLumpur from './kuala-lumpur';
 
 /**
  * Geography added to the dataset after the first pass.
@@ -18,7 +21,10 @@ import * as palawan from './palawan';
  * original seed files are untouched: a record that was already verified keeps its
  * own provenance rather than being rewritten.
  */
-const MODULES = [bali, phuQuoc, daNangHoiAn, hoChiMinhCity, hanoi, siemReap, phnomPenh, cebu, boracay, palawan];
+const MODULES = [
+  bali, phuQuoc, daNangHoiAn, hoChiMinhCity, hanoi, siemReap, phnomPenh, cebu, boracay, palawan,
+  penang, kualaLumpur,
+];
 
 export const extraAreas: AreaSeed[] = MODULES.flatMap((module) => module.areas);
 export const extraHotels: HotelSeed[] = MODULES.flatMap((module) => module.hotels);

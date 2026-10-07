@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Ten destinations at reference tier, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis. No live data.",
+  "status": "V1 — working end to end. Twelve destinations including Malaysia, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis. No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -43,12 +43,12 @@
     "trafficModel": "none"
   },
   "dataScope": {
-    "destinations": 10,
-    "areas": 117,
-    "loyaltyHotels": 97,
-    "places": 446,
-    "placesWithApproximateCoordinates": 31,
-    "note": "All ten destinations are reference tier. Where a destination has fewer loyalty hotels — Boracay 1, Palawan 1, Phnom Penh 5 — that is the verified ceiling, not an omission."
+    "destinations": 12,
+    "areas": 145,
+    "loyaltyHotels": 121,
+    "places": 526,
+    "placesWithApproximateCoordinates": 32,
+    "note": "Twelve destinations, all reference tier. Malaysia (Penang, Kuala Lumpur) added; Chinese coverage is complete across every destination, with nameZh omitted only where a name has no form in real Chinese use."
   },
   "correctionsFoundDuringVerification": [
     "Bali has only five Hilton-branded hotels; a DoubleTree in the first draft does not exist and was removed",
@@ -69,8 +69,8 @@
   ],
   "testResults": {
     "typecheck": "tsc --noEmit clean",
-    "dataValidation": "passes: 0 errors, 117 areas / 97 hotels / 446 places",
-    "coordinateAudit": "0 failures",
+    "dataValidation": "passes: 0 errors, 145 areas / 121 hotels / 526 places",
+    "coordinateAudit": "784 coordinates, 0 failures",
     "socialImport": {
       "checks": 224,
       "passed": 224
@@ -80,15 +80,15 @@
       "passed": 185,
       "consoleErrors": 0
     },
-    "productionBuild": "passes; 10 destinations pre-rendered"
+    "productionBuild": "passes; 12 destinations pre-rendered"
   },
   "knownLimitations": [
     "Five loyalty programmes, not every programme: Accor Live Limitless and Wyndham Rewards are absent rather than half-populated.",
-    "Boracay has one loyalty hotel and Palawan one; both verified against the brands own location lists, not omissions.",
-    "28 of Bali 145 places are approximate or unlocatable after the coordinate audit, down from a claimed-verified 145.",
-    "Saved places, imports and images live in one browser; there are no accounts.",
-    "No prices anywhere — hotel cost is a positioning tier with its basis displayed.",
-    "Traffic is not modelled; measured legs are free-flow estimates."
+    "Penang has no open Hyatt, so its STAY filter offers four programmes; Boracay has one loyalty hotel and Palawan one. These are verified ceilings.",
+    "32 places are approximate or unlocatable after the coordinate audit.",
+    "Imported guides, saved places and images live in one browser; there are no accounts.",
+    "The new Malaysian and expanded records carry no licensed photography and fall back to the no-photograph state.",
+    "No prices anywhere — hotel cost is a positioning tier with its basis displayed."
   ],
   "documents": {
     "process": "/docs/PROCESS.md",

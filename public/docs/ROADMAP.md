@@ -236,6 +236,20 @@ Still open:
 
 ---
 
+## V1.5 — Malaysia, and Chinese everywhere
+
+- **Two Malaysian destinations**: 槟城 (Penang) and 吉隆坡 (Kuala Lumpur), 14 areas and 40
+  places each, with 10 and 14 loyalty hotels across five programmes. A new country in the
+  dataset, not a reskin of an existing one.
+- **Chinese coverage completed for the nine non-Bali destinations.** The original records
+  predated the Chinese-first decision, so 河内's hotel cards read in English while 巴厘岛's
+  were Chinese. Now authored in one reviewable overlay, with `nameZh` omitted only where a
+  name has no form in real Chinese use.
+- **Penang's honest ceiling is 10 hotels and no open Hyatt**, so its STAY filter offers four
+  programmes rather than five — the filter row is built from real inventory, not a fixed list.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces

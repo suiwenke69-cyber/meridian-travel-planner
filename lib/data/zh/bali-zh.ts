@@ -31,6 +31,7 @@ export interface AreaZh {
   vibeZh?: string;
   bestForZh?: string[];
   weakForZh?: string[];
+  idealForZh?: string[];
 }
 
 export interface HotelZh {
@@ -43,6 +44,8 @@ export interface PlaceZh {
   descriptionZh?: string;
   bestTimeZh?: string;
   tagsZh?: string[];
+  notesZh?: string;
+  entryFeeZh?: string;
 }
 
 export const BALI_AREA_ZH: Record<string, AreaZh> = {
@@ -295,7 +298,7 @@ export const BALI_HOTEL_ZH: Record<string, HotelZh> = {
   },
 
   'umana-bali-lxr-hotels-and-resorts': {
-    // Umana is a coined property name and LXR has no Chinese form in use.
+    // Umana is a coined property name and Hilton publishes this property in Chinese as 巴厘岛乌马纳 LXR 酒店及度假村.
     descriptionZh:
       'Melasti 海滩上方的全别墅悬崖度假村，2010 年以 Banyan Tree Ungasan 开业，经过两年翻新后于 2023 年 11 月更名为 Umana Bali, LXR Hotels & Resorts。',
   },
@@ -739,6 +742,8 @@ export const BALI_DESTINATION_BESTFOR_ZH = [
  * be inventing a guide rather than translating one.
  */
 export const DESTINATION_ZH: Record<string, { nameZh: string; countryZh: string }> = {
+  penang: { nameZh: '槟城', countryZh: '马来西亚' },
+  'kuala-lumpur': { nameZh: '吉隆坡', countryZh: '马来西亚' },
   bali: { nameZh: '巴厘岛', countryZh: '印度尼西亚' },
   'phu-quoc': { nameZh: '富国岛', countryZh: '越南' },
   'da-nang-hoi-an': { nameZh: '岘港 · 会安', countryZh: '越南' },

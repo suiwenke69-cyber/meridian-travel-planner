@@ -30,6 +30,12 @@ import {
   STARTER_DESTINATION_ZH,
 } from './zh/bali-zh';
 import { starterDestinations, starterHotels, starterPlaces } from './destinations/starter';
+import { malaysiaDestinations } from './destinations/malaysia';
+import {
+  STARTER_AREA_ZH,
+  STARTER_HOTEL_ZH,
+  STARTER_PLACE_ZH,
+} from './zh/starter-zh';
 import { extraAreas, extraHotels, extraPlaces } from './destinations/extra';
 import {
   HOTEL_COORDINATE_FIXES,
@@ -70,39 +76,40 @@ function fixCoordinates(
 }
 
 function decorateHotel(hotel: HotelSeed): Hotel {
-  const zh = BALI_HOTEL_ZH[hotel.id];
   return {
     ...hotel,
     coordinates: fixCoordinates(hotel, HOTEL_COORDINATE_FIXES),
-    nameZh: hotel.nameZh ?? zh?.nameZh,
-    descriptionZh: hotel.descriptionZh ?? zh?.descriptionZh,
+    nameZh: hotel.nameZh ?? BALI_HOTEL_ZH[hotel.id]?.nameZh ?? STARTER_HOTEL_ZH[hotel.id]?.nameZh,
+    descriptionZh:
+      hotel.descriptionZh ?? BALI_HOTEL_ZH[hotel.id]?.descriptionZh ?? STARTER_HOTEL_ZH[hotel.id]?.descriptionZh,
     images: getImages('hotel', hotel.id),
   };
 }
 
 function decoratePlace(place: PlaceSeed): Place {
-  const zh = BALI_PLACE_ZH[place.id];
   return {
     ...place,
     coordinates: fixCoordinates(place, PLACE_COORDINATE_FIXES),
-    nameZh: place.nameZh ?? zh?.nameZh,
-    descriptionZh: place.descriptionZh ?? zh?.descriptionZh,
-    bestTimeZh: place.bestTimeZh ?? zh?.bestTimeZh,
-    tagsZh: place.tagsZh ?? zh?.tagsZh,
+    nameZh: place.nameZh ?? BALI_PLACE_ZH[place.id]?.nameZh ?? STARTER_PLACE_ZH[place.id]?.nameZh,
+    descriptionZh: place.descriptionZh ?? BALI_PLACE_ZH[place.id]?.descriptionZh ?? STARTER_PLACE_ZH[place.id]?.descriptionZh,
+    bestTimeZh: place.bestTimeZh ?? BALI_PLACE_ZH[place.id]?.bestTimeZh ?? STARTER_PLACE_ZH[place.id]?.bestTimeZh,
+    tagsZh: place.tagsZh ?? BALI_PLACE_ZH[place.id]?.tagsZh ?? STARTER_PLACE_ZH[place.id]?.tagsZh,
+    notesZh: place.notesZh ?? BALI_PLACE_ZH[place.id]?.notesZh ?? STARTER_PLACE_ZH[place.id]?.notesZh,
+    entryFeeZh: place.entryFeeZh ?? BALI_PLACE_ZH[place.id]?.entryFeeZh ?? STARTER_PLACE_ZH[place.id]?.entryFeeZh,
     images: getImages('place', place.id),
   };
 }
 
 function decorateArea(area: AreaSeed): Area {
-  const zh = BALI_AREA_ZH[area.id];
   return {
     ...area,
-    nameZh: area.nameZh ?? zh?.nameZh,
-    taglineZh: area.taglineZh ?? zh?.taglineZh,
-    summaryZh: area.summaryZh ?? zh?.summaryZh,
-    vibeZh: area.vibeZh ?? zh?.vibeZh,
-    bestForZh: area.bestForZh ?? zh?.bestForZh,
-    weakForZh: area.weakForZh ?? zh?.weakForZh,
+    nameZh: area.nameZh ?? BALI_AREA_ZH[area.id]?.nameZh ?? STARTER_AREA_ZH[area.id]?.nameZh,
+    taglineZh: area.taglineZh ?? BALI_AREA_ZH[area.id]?.taglineZh ?? STARTER_AREA_ZH[area.id]?.taglineZh,
+    summaryZh: area.summaryZh ?? BALI_AREA_ZH[area.id]?.summaryZh ?? STARTER_AREA_ZH[area.id]?.summaryZh,
+    vibeZh: area.vibeZh ?? BALI_AREA_ZH[area.id]?.vibeZh ?? STARTER_AREA_ZH[area.id]?.vibeZh,
+    bestForZh: area.bestForZh ?? BALI_AREA_ZH[area.id]?.bestForZh ?? STARTER_AREA_ZH[area.id]?.bestForZh,
+    weakForZh: area.weakForZh ?? BALI_AREA_ZH[area.id]?.weakForZh ?? STARTER_AREA_ZH[area.id]?.weakForZh,
+    idealForZh: area.idealForZh ?? BALI_AREA_ZH[area.id]?.idealForZh ?? STARTER_AREA_ZH[area.id]?.idealForZh,
     // An authored tagline on the seed wins; the registry and the derivation are
     // the fallbacks for areas authored before taglines moved onto the record.
     tagline: area.tagline ?? AREA_TAGLINES[area.id] ?? deriveTagline(area),
@@ -151,7 +158,9 @@ function decorateDestination(destination: DestinationSeed): Destination {
   };
 }
 
-export const DESTINATIONS: Destination[] = [bali, ...starterDestinations].map(decorateDestination);
+export const DESTINATIONS: Destination[] = [bali, ...starterDestinations, ...malaysiaDestinations].map(
+  decorateDestination,
+);
 
 const DESTINATION_BY_ID = new Map(DESTINATIONS.map((d) => [d.id, d]));
 

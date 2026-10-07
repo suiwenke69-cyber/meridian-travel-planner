@@ -15,12 +15,12 @@ import type { Region, RegionId } from '../types';
  * of thing would make both wrong.
  */
 export const REGIONS: Region[] = [
-  { id: 'indonesia', name: 'Indonesia', countryCode: 'ID', flag: '🇮🇩' },
-  { id: 'vietnam', name: 'Vietnam', countryCode: 'VN', flag: '🇻🇳' },
-  { id: 'cambodia', name: 'Cambodia', countryCode: 'KH', flag: '🇰🇭' },
-  { id: 'philippines', name: 'Philippines', countryCode: 'PH', flag: '🇵🇭' },
-  { id: 'malaysia', name: 'Malaysia', countryCode: 'MY', flag: '🇲🇾' },
-  { id: 'thailand', name: 'Thailand', countryCode: 'TH', flag: '🇹🇭' },
+  { id: 'indonesia', name: 'Indonesia', nameZh: '印度尼西亚', countryCode: 'ID', flag: '🇮🇩' },
+  { id: 'vietnam', name: 'Vietnam', nameZh: '越南', countryCode: 'VN', flag: '🇻🇳' },
+  { id: 'cambodia', name: 'Cambodia', nameZh: '柬埔寨', countryCode: 'KH', flag: '🇰🇭' },
+  { id: 'philippines', name: 'Philippines', nameZh: '菲律宾', countryCode: 'PH', flag: '🇵🇭' },
+  { id: 'malaysia', name: 'Malaysia', nameZh: '马来西亚', countryCode: 'MY', flag: '🇲🇾' },
+  { id: 'thailand', name: 'Thailand', nameZh: '泰国', countryCode: 'TH', flag: '🇹🇭' },
 ];
 
 export function getRegion(id: RegionId): Region | undefined {

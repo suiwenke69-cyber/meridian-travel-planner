@@ -234,6 +234,8 @@ export type RegionId = 'indonesia' | 'vietnam' | 'cambodia' | 'philippines' | 'm
 export interface Region {
   id: RegionId;
   name: string;
+  /** Chinese name, since the interface is Chinese-first. */
+  nameZh?: string;
   countryCode: string;
   flag: string;
 }

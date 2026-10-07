@@ -60,6 +60,16 @@ type Row = [string, boolean | null, [number, number] | null, Weekend];
  * from this table and from the harvested Singapore records is `unknown`.
  */
 const CURATED: Record<string, Row[]> = {
+  /*
+   * Singapore is mostly HARVESTED from the destination files, but the Malaysia
+   * destinations carry no harvested block, so the two shortest and most-served
+   * pairs from the home market are curated here. They are the only rows in this
+   * table for an origin that otherwise has verified data.
+   */
+  singapore: [
+    ['kuala-lumpur', true, [60, 75], 'good'],
+    ['penang', true, [75, 90], 'good'],
+  ],
   // --- 粤港澳大湾区 ---------------------------------------------------------
   guangzhou: [
     ['bali', true, [305, 345], 'not-ideal'],
@@ -72,6 +82,8 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', true, [200, 230], 'not-ideal'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [250, 285], 'possible'],
+    ['penang', true, [235, 265], 'possible'],
   ],
   shenzhen: [
     ['bali', true, [310, 345], 'not-ideal'],
@@ -84,6 +96,8 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [250, 285], 'possible'],
+    ['penang', true, [235, 270], 'possible'],
   ],
   'hong-kong': [
     ['bali', true, [300, 330], 'not-ideal'],
@@ -96,6 +110,8 @@ const CURATED: Record<string, Row[]> = {
     ['phu-quoc', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [235, 265], 'possible'],
+    ['penang', true, [225, 255], 'possible'],
   ],
 
   // --- 长三角 ---------------------------------------------------------------
@@ -110,6 +126,8 @@ const CURATED: Record<string, Row[]> = {
     ['phu-quoc', true, [280, 310], 'not-ideal'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [330, 370], 'possible'],
+    ['penang', true, [330, 370], 'possible'],
   ],
   hangzhou: [
     ['bali', true, [350, 390], 'not-ideal'],
@@ -122,6 +140,8 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [330, 375], 'possible'],
+    ['penang', true, [330, 375], 'possible'],
   ],
 
   // --- 中国其他 -------------------------------------------------------------
@@ -136,6 +156,8 @@ const CURATED: Record<string, Row[]> = {
     ['phu-quoc', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [370, 410], 'possible'],
+    ['penang', null, null, 'unknown'],
   ],
   chengdu: [
     ['bali', true, [350, 390], 'not-ideal'],
@@ -148,6 +170,8 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [275, 310], 'possible'],
+    ['penang', true, [270, 305], 'possible'],
   ],
 
   // --- 东南亚 ---------------------------------------------------------------
@@ -162,6 +186,8 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', true, [220, 250], 'not-ideal'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [130, 150], 'good'],
+    ['penang', true, [115, 135], 'good'],
   ],
   'kuala-lumpur': [
     ['bali', true, [185, 210], 'possible'],
@@ -174,6 +200,7 @@ const CURATED: Record<string, Row[]> = {
     ['cebu', true, [225, 255], 'not-ideal'],
     ['palawan', true, [170, 195], 'possible'],
     ['boracay', null, null, 'unknown'],
+    ['penang', true, [60, 75], 'good'],
   ],
   jakarta: [
     ['bali', true, [110, 130], 'good'],
@@ -186,6 +213,8 @@ const CURATED: Record<string, Row[]> = {
     ['phu-quoc', null, null, 'unknown'],
     ['boracay', null, null, 'unknown'],
     ['palawan', null, null, 'unknown'],
+    ['kuala-lumpur', true, [135, 155], 'good'],
+    ['penang', true, [140, 160], 'good'],
   ],
 };
 

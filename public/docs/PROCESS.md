@@ -1566,3 +1566,91 @@ authors were blocked on: Hyatt's soft brands, IHG's Vignette Collection, and
    borrowing a neighbour's picture.
 5. **Overpass was unreachable for part of the run**, so some address lookups fell back
    to Nominatim street geocoding or were dropped.
+
+
+---
+
+# Iteration 9 — Malaysia, and the Chinese that was missing
+
+## 1. The gap nobody had noticed
+
+The product is Chinese-first, and Bali's records were written that way. The other nine
+destinations were not: their ORIGINAL records predate that decision, so 河内's hotel cards
+rendered in English beside 巴厘岛's Chinese ones. The expansion pass had authored Chinese
+inline for everything it added, which made the gap harder to see — the new records looked
+right, and the old ones were the ones reading wrong.
+
+Measured, it was concrete: 4 areas, 4 hotels and 8–10 places missing per destination.
+
+Written as an overlay (`lib/data/zh/starter-zh.ts` plus one module per author) rather than
+edited into nine geography files, for the same reason the coordinate corrections are: the
+data files are coordinate-verified and reviewed as such, and presentation copy has a
+different lifetime. Three authors worked in parallel without touching a shared file.
+
+`nameZh` is omitted wherever a name has no form in real Chinese use — most Western-named
+beach clubs and restaurants, and hotel brands that do not publish a Chinese property name.
+That is why the audit still reports ~115 Bali places without `nameZh`: they are Latin-named
+venues, and inventing a transliteration would be worse than leaving the canonical name.
+
+Two real mistakes surfaced while wiring it:
+
+- **The `??` fallback never fired.** `BALI_HOTEL_ZH[id] ?? STARTER_HOTEL_ZH[id]` looks
+  right until you notice the Bali entry *exists* and simply omits `nameZh` — so the overlay
+  value was unreachable. The lookup is now per FIELD, which is what it always meant.
+- **Two modules exported the same interface names** (`AreaZh`, `PlaceZh`), and the collision
+  silently resolved to the narrower one. The overlay's types are namespaced now.
+
+One agent also corrected a premise I had given it: I described an 18-hotel job in Bali; the
+real gap was 3 records, one of which is a property Hilton *does* publish in Chinese — and the
+existing comment in `bali-zh.ts` claiming otherwise was wrong. The comment is fixed.
+
+## 2. Malaysia
+
+A new country in the dataset: `RegionId` already had `malaysia`, so the work was geography,
+hotels and connections rather than architecture.
+
+- **Penang** — 14 areas, 10 hotels, 40 places. Marriott 3, Hilton 2, IHG 1, GHA 4, **Hyatt 0**.
+- **Kuala Lumpur** — 14 areas, 14 hotels, 40 places across all five programmes.
+
+Both reported their honest ceilings rather than filling targets, and both exclusions are the
+kind that matter: **Conrad KL** is an OSM object tagged `(U/C)` — a construction site;
+**Canopy by Hilton KL** is tagged `Former Canopy by Hilton KL`; **Holiday Inn Resort Penang**
+closed and was sold with vacant possession in 2021, and **Four Points by Sheraton Penang** is
+now a Mercure, which is why a lookup for it returns the wrong brand.
+
+The consequences are visible in the product rather than hidden: Penang's STAY filter offers
+four programmes, not five, because the filter row is generated from real inventory.
+
+One flagged issue was fixed on integration: `butterworth-mainland` was a day-trip zone hosting
+three bookable hotels, which contradicts its own label — it is a stay base now.
+
+## 3. Wiring bug this pass introduced and caught
+
+My first Malaysian integration registered each destination's areas **twice** — once through
+the destination seed and once through the extra-geography aggregator — and the validator
+reported 28 duplicate Penang area ids. The fix empties the seed's own `areas` array, because
+these destinations' geography lives entirely in the extra modules. It is the same class of
+mistake as adding a record to two registries "to be safe".
+
+## 4. After this pass
+
+**12 destinations · 145 areas · 121 loyalty hotels · 526 places.**
+
+- `npx tsc --noEmit` — clean.
+- `npm run validate:data` — passes, 0 errors.
+- `npm run verify:coords` — **784 coordinates, 0 failures**.
+- `npm run test:social` — 224/224.
+- `npm run test:e2e` — 185/185, zero console errors.
+- Both Malaysian destinations inspected at 1440×900 and 390×844.
+
+## Known limitations after this pass
+
+1. **Penang has no open Hyatt**, so its filter row offers four programmes. Its JdV by Hyatt is
+   signed and not trading.
+2. **Photography did not grow with the data.** The new Malaysian records — and the expanded
+   ones from the previous pass — have no licensed imagery and show the no-photograph state
+   rather than borrowing a neighbour's picture.
+3. **Chinese `nameZh` is deliberately absent** for Latin-only venues. That is a judgement per
+   record, not a gap, and it is recorded in each report.
+4. **Accor and Wyndham are still absent**, which matters more in Malaysia than anywhere else in
+   the dataset: a large share of Penang and KL's upscale inventory is Accor.
