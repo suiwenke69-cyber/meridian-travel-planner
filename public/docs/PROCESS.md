@@ -1862,6 +1862,52 @@ no implicit place creation.
   condensed My Trips pass.
 - `npm run build:static` — `/trips` and `/trips/detail` both export.
 
+## 8. Addendum — the PLAN panel gave the day its space back
+
+The accommodation editor was permanently expanded: a hotel select and two date
+inputs per stay. On a 1440×900 laptop that was **415px** of the right rail, and the
+day itself — the thing PLAN is opened to work on — began ~340px lower and showed
+**one** stop above the fold. Editing accommodation is a once-per-trip act; reading
+the day is the continuous one. The panel had them the wrong way round.
+
+It is now a summary of one or two lines with the editor behind 修改:
+
+```
+住宿 · 3 晚                                 修改
+🏨 巴厘岛丽思卡尔顿酒店 1 晚 → 巴厘岛 W 度假酒店 1 晚 → 巴厘岛瑞吉度假酒店 1 晚
+```
+
+- One hotel reads as one line — `🏨 巴厘岛丽思卡尔顿酒店 · 1 晚` — and three
+  hotels as `3 家住宿 · 2 次换酒店` plus the chain. The chain clamps to two lines,
+  so nine hotels do not cost more height than three.
+- **Nothing that must not be hidden is hidden.** A night with no bed and a stay
+  whose dates cannot be true both stay visible when collapsed; only the per-night
+  detail and the inputs move behind 修改.
+- 修改 opens the existing editor unchanged, with 完成 to close it. Switching day
+  closes it again — the day the traveller just switched to gets the space — while
+  the choice is remembered in `sessionStorage` across tab switches and reloads.
+- The day's start time is one row with the day's summary instead of its own row,
+  and it is stated once: the native input already renders `上午 09:00`, so the
+  separate `09:00` printed beside it said the same thing twice. When the day
+  inherits the trip default the row now says 默认 instead.
+
+Measured on the three-hotel / four-day trip, 1440×900:
+
+| | editor | fully visible stops | itinerary window |
+| --- | --- | --- | --- |
+| before (always open) | 415px | 1 | ~90px |
+| after (collapsed) | **71px** | **2** | **443px** |
+
+The third stop is at 909px, nine pixels below the fold. Three stops *and* their
+measured transport rows are ~760px of content; no collapsed summary makes that fit a
+900px screen, and the transport rows are not being trimmed to pretend otherwise.
+What the fix guarantees is that the window belongs to the itinerary.
+
+`scripts/check-plan-space.mjs` builds exactly that trip through the UI and asserts
+all of the above — 26 checks, including that no hotel select or date input exists
+outside edit mode, that the summary survives a day switch, and that the session
+remembers the editor was left open.
+
 ## Known limitations after this pass
 
 1. **One browser, no account.** Trips are `localStorage`; clearing site data

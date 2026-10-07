@@ -9,7 +9,7 @@ import type { MessageKey } from '@/lib/i18n/messages';
 import { useTripStore } from '@/lib/store/trip-store';
 import { useUiStore } from '@/lib/store/ui-store';
 import { useDayLegs } from '@/lib/transport/use-day-legs';
-import { buildDaySchedule, DEFAULT_START_TIME, dayStartMinutes, formatClock } from '@/lib/schedule';
+import { buildDaySchedule, DEFAULT_START_TIME } from '@/lib/schedule';
 import { formatDateShort } from '@/lib/date';
 import { heroImage } from '@/lib/images';
 import { itemFromAirport } from '@/lib/trip';
@@ -76,7 +76,6 @@ export function DayTimeline({
   const partial = totals.unavailable > 0;
   const crossAreaCount = analysis?.crossAreaHops ?? 0;
   const overridden = Boolean(day.startTime);
-  const startLabel = formatClock(dayStartMinutes(trip, day));
 
   const lookup = useMemo(() => {
     const map = new Map<string, { image?: ReturnType<typeof heroImage>; subtitle: string }>();
@@ -98,7 +97,16 @@ export function DayTimeline({
 
   return (
     <div className="scroll-area min-h-0 flex-1 px-3 py-3">
-      {/* --- day summary ------------------------------------------------- */}
+      {/*
+        --- day summary, and the day's own start time --------------------
+        The two used to be separate rows. They are one line of small print about
+        the same day, so they are one row now: the itinerary below is what the
+        traveller came for, and a row that only says "出发时间 09:00" is not worth
+        its own line in the panel.
+
+        One clock, not two: the native time input already renders "上午 09:00",
+        so printing the resolved start time beside it said the same thing twice.
+      */}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
         <span className="font-semibold text-ink">
           {t('plan.day', { n: day.index + 1 })}
@@ -138,32 +146,32 @@ export function DayTimeline({
             )}
           </>
         )}
-      </div>
 
-      {/* --- per-day start time ------------------------------------------ */}
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <label className="text-[11px] text-faint" htmlFor={`day-start-${day.id}`}>
-          {t('plan.startTime')}
-        </label>
-        <input
-          id={`day-start-${day.id}`}
-          type="time"
-          className="field w-[92px] px-1.5 py-1 text-[11.5px]"
-          value={day.startTime ?? trip.defaultStartTime ?? DEFAULT_START_TIME}
-          data-testid={`day-start-${day.id}`}
-          onChange={(event) => setDayStartTime(trip.id, day.id, event.target.value)}
-        />
-        {overridden && (
-          <button
-            type="button"
-            className="btn-ghost btn-xs text-muted"
-            data-testid={`day-start-reset-${day.id}`}
-            onClick={() => setDayStartTime(trip.id, day.id, undefined)}
-          >
-            {t('plan.useDefaultStart')}
-          </button>
-        )}
-        {!overridden && <span className="text-[10.5px] text-faint">{startLabel}</span>}
+        <span className="ml-auto flex items-center gap-1.5">
+          <label className="text-[11px] text-faint" htmlFor={`day-start-${day.id}`}>
+            {t('plan.startTime')}
+          </label>
+          <input
+            id={`day-start-${day.id}`}
+            type="time"
+            className="field w-[84px] px-1.5 py-[2px] text-[11.5px]"
+            value={day.startTime ?? trip.defaultStartTime ?? DEFAULT_START_TIME}
+            data-testid={`day-start-${day.id}`}
+            onChange={(event) => setDayStartTime(trip.id, day.id, event.target.value)}
+          />
+          {overridden ? (
+            <button
+              type="button"
+              className="btn-ghost btn-xs text-muted"
+              data-testid={`day-start-reset-${day.id}`}
+              onClick={() => setDayStartTime(trip.id, day.id, undefined)}
+            >
+              {t('plan.useDefaultStart')}
+            </button>
+          ) : (
+            <span className="text-[10.5px] text-faint">{t('plan.startTimeIsDefault')}</span>
+          )}
+        </span>
       </div>
 
       {/* --- missing accommodation, stated not invented ------------------ */}

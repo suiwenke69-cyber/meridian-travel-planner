@@ -284,6 +284,11 @@ Still open:
   duplicate and delete (confirmed) on the card itself.
 - **The 行程单 is a page, not a temporary state.** 行程单 | 地图 tabs over the same
   trip; the map filters by day.
+- **Accommodation in PLAN is a summary, not an editor.** One or two lines —
+  `3 家住宿 · 2 次换酒店` plus the hotel chain, or `🏨 W Bali · 3 晚` for one hotel —
+  with the editor behind 修改 and 完成. It was permanently expanded and took 415px of
+  the right rail; collapsed it is 71px, and the day below it went from one visible
+  stop to a 443px window of its own.
 - **Everything is editable where it is read**: trip dates and travellers, each
   stay's hotel and nights, each day's start time, and each stop's order, day and
   fixed time.

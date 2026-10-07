@@ -94,6 +94,12 @@ takes them, not a set of tools:
 Desktop keeps the map dominant with a contextual right rail; mobile converts the rail into a
 three-snap bottom sheet so the map is never pushed off screen.
 
+PLAN keeps the day as its dominant content. Accommodation is a one- or two-line summary — `3 家住宿 · 2 次换酒店`
+plus the hotel chain, or `🏨 W Bali · 3 晚` for a single hotel — with the existing editor behind 修改 and 完成, so
+no hotel select or date input exists outside edit mode. On a 1440×900 laptop that is a 71px summary instead of a
+415px editor, which turns a ~90px sliver of itinerary into a 443px window; a night with no bed is still stated
+while collapsed, and switching day closes the editor again.
+
 Two behaviours matter more than the rest:
 
 - **Each tab re-frames the map.** Switching to STAY moves the camera to where the hotels are;

@@ -92,6 +92,12 @@
       "passed": 42,
       "command": "npm run test:trips",
       "note": "the 15-step My Trips acceptance scenario driven through the real UI at 1440x900, zero console errors"
+    },
+    "planPanelSpace": {
+      "checks": 26,
+      "passed": 26,
+      "command": "node scripts/check-plan-space.mjs",
+      "note": "builds the 3-hotel/4-day trip through the UI and measures the panel at 1440x900"
     }
   },
   "knownLimitations": [
@@ -398,6 +404,7 @@
     "separation": "Place (canonical) / TripStay (a booking) / ItineraryItem (a visit) / DayAnchor (derived) / TransportLeg (a route) are five separate concepts and none is a copy of another.",
     "identity": "A trip is a persistent entity with a stable id, a list at /trips and a detail page at /trips/detail/?id=. The planner is one of its doors, not its home. Ids are created at runtime, so the detail page uses a query parameter inside a Suspense boundary — a static export cannot prerender /trips/[id].",
     "editable": "Trip dates and travellers; each stay's hotel and nights; each day's start time; each stop's order, day and fixed time — all edited in place on the page that reads them.",
+    "planPanelAccommodation": "In PLAN the accommodation is a one-or-two line summary — `3 家住宿 · 2 次换酒店` plus the hotel chain, or `🏨 W Bali · 3 晚` for a single hotel — with the existing editor behind 修改/完成. No hotel select or date input exists outside edit mode. Unbooked nights and impossible dates stay visible while collapsed. The open/closed choice lives in sessionStorage, and switching day closes it. Measured at 1440x900 on a 3-hotel/4-day trip: 415px -> 71px, visible itinerary window ~90px -> 443px.",
     "reschedule": "Days are re-derived BY DATE, not by index, so editing an end date keeps every stay, per-day start time and stop that still falls inside the new range.",
     "duplicate": "Duplicate copies days, stops and stays with NEW stay ids — sharing ids would make the copy and the original the same accommodation object.",
     "socialImportLink": "An import may record the trip it fed, and its saved places can be read back per trip. That is the whole relationship: no automatic itinerary merge."

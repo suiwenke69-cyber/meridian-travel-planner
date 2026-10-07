@@ -24,7 +24,8 @@
     "verify:coords": "tsx scripts/verify-coords.mts",
     "verify:coords:geo": "tsx scripts/verify-coords.mts --geocode",
     "test:trip": "tsx scripts/test-trip-stays.mts",
-    "test:trips": "node scripts/e2e-trips.mjs"
+    "test:trips": "node scripts/e2e-trips.mjs",
+    "test:plan-space": "node scripts/check-plan-space.mjs"
   },
   "dependencies": {
     "maplibre-gl": "^6.12.0",

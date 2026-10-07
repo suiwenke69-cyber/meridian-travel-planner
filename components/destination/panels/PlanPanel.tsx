@@ -135,8 +135,12 @@ export function PlanPanel({
       ) : (
         <>
           <ImportGuideCta variant="row" />
-          {/* Accommodation first: it decides the shape of every day below it. */}
-          <StayEditor trip={trip} hotels={hotels} />
+          {/*
+            Accommodation first, because it decides the shape of every day below
+            it — but as a one-line summary with the editor behind 修改. The day is
+            what PLAN is opened to work on, so the day gets the room.
+          */}
+          <StayEditor trip={trip} hotels={hotels} activeDayId={activeDay?.id ?? null} />
           <DayTabs trip={trip} activeDayId={activeDay?.id ?? null} analyses={analyses} onSelectDay={onSelectDay} />
           {activeDay && (
             <DayTimeline
