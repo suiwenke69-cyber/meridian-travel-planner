@@ -1654,3 +1654,138 @@ mistake as adding a record to two registries "to be safe".
    record, not a gap, and it is recorded in each report.
 4. **Accor and Wyndham are still absent**, which matters more in Malaysia than anywhere else in
    the dataset: a large share of Penang and KL's upscale inventory is Accor.
+
+
+---
+
+# Iteration 10 — accommodation as stays, not as rows on days
+
+## 1. The mistake the old model made
+
+A hotel is not a place you visit, it is where you *are*. The itinerary stored it
+as an ordinary item, so a three-night stay meant adding W Bali to the timeline on
+the 10th, the 11th and again on the 12th — and nothing in the data said those three
+rows were one booking. Every question the itinerary actually needs answered was
+therefore unanswerable: where does today start, where does it end, is today a
+moving day, is any night unbooked.
+
+The fix is a `TripStay` — a hotel and a date range — and a rule that makes
+everything else follow:
+
+> **start = the stay covering last night. end = the stay covering tonight.**
+
+On the 12th of a 10–12 / 12–14 trip, that gives the hotel you woke up in and the
+hotel you sleep in. Different hotels, and the day is a hotel-change day **without
+anyone declaring it**. Arrival and departure days fall out too: the first day has
+no previous night, the last day's night is not spent.
+
+Nothing derived is stored. Anchors are recomputed from the stays on every render,
+so editing a stay, changing a trip date or deleting a booking moves every affected
+day with no invalidation step and no way for the timeline to disagree with the
+accommodation list.
+
+## 2. Five concepts, kept apart
+
+The brief asked for this explicitly, and it is the reason the model is this small:
+
+| Concept | What it is | Stored? |
+| --- | --- | --- |
+| `Place` / `Hotel` | a canonical geographic entity | yes, curated |
+| `TripStay` | a booking: hotel + date range | yes, by the traveller |
+| `ItineraryItem` | a visit, at a time | yes, by the traveller |
+| `DayAnchor` | where a day starts and ends | **no — derived** |
+| `TransportLeg` | a route between two stops | no — computed |
+
+A hotel the traveller returns to later is one canonical record and two stays. No
+copy of a hotel is ever made.
+
+## 3. Routing the change day for real
+
+`buildLegsForStops` takes an arbitrary ordered stop list, so a day is routed as
+`startAnchor → items → endAnchor` through the **existing** provider. On a change
+day that means the hotel-to-hotel drive is measured like any other leg rather than
+asserted as metadata — the browser check showed `09:00 W Bali → 09:24 Holiday Inn
+Benoa`, a real 24-minute drive between two real properties.
+
+The seam for arrival and departure is the same one: an airport item already on the
+day becomes the start anchor on an arrival day and the end anchor on a departure
+day. `origin → airport → first hotel` needs no second model, and no flight
+integration was built.
+
+## 4. Two clock rules that were previously impossible
+
+**The start time is a setting.** It was the literal `9 * 60` inside the timeline,
+so "we leave at 08:30" could not be expressed. There is now a trip default and a
+per-day override, and — importantly — the override is `undefined` rather than a
+copied value, so changing the trip default still moves every day the traveller
+never touched.
+
+Changing a day's start time recomputes the **clock** without re-requesting the
+routes: the legs hook keys on geometry only, so a time edit leaves the measured
+legs in place. That distinction is the whole reason the schedule is a pure
+function in `lib/schedule.ts`.
+
+**A fixed time is a booking, not a preference.** Arriving early produces usable
+waiting time; arriving late produces a conflict with the number of minutes. The
+time is never moved, because it is the one thing in the day the traveller cannot
+change.
+
+## 5. Migration that refuses to guess
+
+A hotel row on a single day could mean "I slept here" or "I went to look at this
+hotel", and no amount of logic distinguishes them. So the migration converts **only**
+a run of the same hotel on two or more consecutive days — which cannot mean
+anything else — and leaves every ambiguous row exactly where it was, still
+rendering as an itinerary item. It is idempotent, and it runs on every hydrate
+because it is safe to.
+
+The result is that no existing trip is rewritten on a guess, and a trip that
+predates the model keeps working with its hotel rows intact.
+
+## 6. What the interface says
+
+- **住宿** sits above the day tabs, because it decides the shape of every day
+  below it: hotel, check-in, check-out, and a warning per unbooked night.
+- An overlapping stay is **refused** on add — a trip cannot be in two hotels on
+  one night — but an *edit* that creates an overlap is stored and marked, because
+  discarding a traveller's input mid-edit is worse than showing them the conflict
+  they are fixing.
+- Anchors render as flat tinted rows, quieter than the photograph cards for
+  attractions, labelled 今天从这里出发 and 今晚住这里.
+- 换酒店 appears on the day, not in a settings screen.
+
+## 7. Verification
+
+- `npx tsc --noEmit` — clean.
+- `npm run test:trip` — **111/111**, covering every case the brief listed: one,
+  two and three hotels; the change day; a normal day; arrival and departure days;
+  an unbooked night; overlapping stays; editing dates; changing hotel; deleting a
+  stay; `Hotel A → POIs → Hotel B` routing with an injected provider; the default
+  and per-day start times; a fixed-time item; a fixed-time conflict; and legacy
+  compatibility including the ambiguous single row.
+- `npm run validate:data` — passes.
+- `npm run verify:coords` — 0 failures.
+- `npm run test:social` — 224/224.
+- `npm run test:e2e` — 185/185, zero console errors.
+- The stay editor and a real hotel-change day were driven in a browser at
+  1440×900 and 390×844: two stays added, day 3 showing W Bali → 24 min → the next
+  hotel with the 换酒店 badge, zero console errors.
+
+One bug this pass introduced and caught: the derived-anchors `useMemo` was placed
+after the `if (!trip)` early return, so creating a trip changed the number of hooks
+between renders. Moving it above the returns fixed it — the same class of bug as
+the DO panel's two iterations earlier, with the same symptom.
+
+## Known limitations after this pass
+
+1. **A stay is not a booking.** No confirmation number, no room type, no rate, and
+   no check-in time.
+2. **A hotel-change day is routed, not optimised.** The brief was explicit that the
+   data model should support "put the southern sights on the day you move south";
+   it does — the day knows both anchors and every stop's position — and the
+   optimiser is not built.
+3. **Arrival and departure anchors are expressible, not computed.** They use the
+   airport item already on the day. The origin-to-airport leg and any live flight
+   data are out of scope.
+4. **Unbooked nights warn and nothing else.** The model never invents a hotel, and
+   it does not suggest one either.

@@ -26,26 +26,50 @@ export interface BuildLegsOptions {
   timeoutMs?: number;
 }
 
-export async function buildLegsForDay(day: TripDay, options: BuildLegsOptions = {}): Promise<TransportLeg[]> {
+/**
+ * Anything that can be a stop on a route.
+ *
+ * Itinerary items and day anchors are structurally the same thing to the router:
+ * a place with coordinates. Accepting one shape is what lets a hotel-change day
+ * be routed as `Hotel A → stops → Hotel B` through the same provider, with the
+ * hotel-to-hotel leg measured like any other drive rather than being asserted as
+ * metadata.
+ */
+export interface RouteStop {
+  id: string;
+  name: string;
+  /** Used only by the transport recommender, which reads it for context. */
+  kind?: ItineraryItem['kind'];
+  /** Set on day anchors, which are not items but behave as one for transport. */
+  itemKind?: ItineraryItem['kind'];
+  nameZh?: string;
+  lat: number;
+  lng: number;
+  areaId?: string;
+}
+
+/** Turns a day's anchors and items into the ordered stop list to route. */
+export function routeStops(anchors: { start: RouteStop | null; end: RouteStop | null }, items: RouteStop[]): RouteStop[] {
+  return [anchors.start, ...items, anchors.end].filter((stop): stop is RouteStop => Boolean(stop));
+}
+
+export async function buildLegsForStops(stops: RouteStop[], options: BuildLegsOptions = {}): Promise<TransportLeg[]> {
   const routeFor = options.routeFor ?? requestRoute;
-  const items = day.items;
-  if (items.length < 2) return [];
-
+  if (stops.length < 2) return [];
   const timeoutMs = options.timeoutMs ?? 12_000;
-
-  const legs = await Promise.all(
-    items.slice(1).map(async (to, index) => {
-      const from = items[index];
-      return buildLeg(from, to, routeFor, timeoutMs);
-    }),
+  return Promise.all(
+    stops.slice(1).map((to, index) => buildLeg(stops[index], to, routeFor, timeoutMs)),
   );
+}
 
-  return legs;
+/** Item-only routing, for callers with no anchors (and for the existing tests). */
+export async function buildLegsForDay(day: TripDay, options: BuildLegsOptions = {}): Promise<TransportLeg[]> {
+  return buildLegsForStops(day.items, options);
 }
 
 async function buildLeg(
-  from: ItineraryItem,
-  to: ItineraryItem,
+  from: RouteStop,
+  to: RouteStop,
   routeFor: typeof requestRoute,
   timeoutMs: number,
 ): Promise<TransportLeg> {
@@ -64,8 +88,11 @@ async function buildLeg(
   const crossing = findWaterCrossing(from.areaId, to.areaId);
 
   const recommendation = recommendTransport({
-    from,
-    to,
+    // The recommender reads `kind` and `name`. A hotel ANCHOR carries no kind —
+    // it is not an itinerary item — so it reports as a hotel stop rather than
+    // losing the airport/hotel distinction that the rationale depends on.
+    from: { kind: from.kind ?? from.itemKind ?? 'activity', name: from.name },
+    to: { kind: to.kind ?? to.itemKind ?? 'activity', name: to.name },
     straightLineKm,
     roadKm,
     crossesWater: Boolean(crossing),

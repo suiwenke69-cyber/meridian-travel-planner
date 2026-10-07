@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Destination, ItineraryItem, Trip, TripDraft } from '../types';
+import type { Destination, ItineraryItem, Trip, TripDraft, TripStay } from '../types';
 import {
   addItemToDay,
   clearDay,
@@ -15,6 +15,7 @@ import {
   setDayNote,
   updateItem,
 } from '../trip';
+import { isStayValid, migrateTripToStays } from '../trip-stays';
 
 /**
  * Trip persistence.
@@ -55,6 +56,20 @@ export interface TripStoreState {
   patchItem: (tripId: string, dayId: string, itemId: string, patch: Partial<ItineraryItem>) => void;
   clearDayItems: (tripId: string, dayId: string) => void;
   setDayNote: (tripId: string, dayId: string, note: string) => void;
+
+  // --- accommodation ------------------------------------------------------
+  /**
+   * Adds a stay. Refused (returns null) when it would overlap an existing one or
+   * has no nights, because a trip cannot be in two hotels on one night and the
+   * editor should not be the only thing enforcing that.
+   */
+  addStay: (tripId: string, input: Omit<TripStay, 'id'>) => TripStay | null;
+  updateStay: (tripId: string, stayId: string, patch: Partial<Omit<TripStay, 'id'>>) => void;
+  removeStay: (tripId: string, stayId: string) => void;
+  /** `HH:MM`. The trip-wide default that a day without an override inherits. */
+  setDefaultStartTime: (tripId: string, time: string) => void;
+  /** `HH:MM`, or undefined to fall back to the trip default. */
+  setDayStartTime: (tripId: string, dayId: string, time: string | undefined) => void;
 
   dismissRescheduleWarning: () => void;
   clearAll: () => void;
@@ -176,6 +191,77 @@ export const useTripStore = create<TripStoreState>()(
       clearDayItems: (tripId, dayId) =>
         set((state) => ({ trips: mapTrip(state.trips, tripId, (trip) => clearDay(trip, dayId)) })),
 
+      addStay: (tripId, input) => {
+        const trip = get().trips.find((t) => t.id === tripId);
+        if (!trip) return null;
+        if (!isStayValid(input)) return null;
+        const existing = trip.stays ?? [];
+        // Back-to-back is allowed; overlapping is not.
+        const overlaps = existing.some(
+          (stay) =>
+            input.checkInDate < stay.checkOutDate && stay.checkInDate < input.checkOutDate,
+        );
+        if (overlaps) return null;
+
+        let counter = existing.length + 1;
+        let id = `stay-${Date.now().toString(36)}-${counter}`;
+        while (existing.some((stay) => stay.id === id)) {
+          counter += 1;
+          id = `stay-${Date.now().toString(36)}-${counter}`;
+        }
+        const stay: TripStay = { ...input, id };
+        set((state) => ({
+          trips: mapTrip(state.trips, tripId, (t) => ({
+            ...t,
+            stays: [...(t.stays ?? []), stay].sort((a, b) => a.checkInDate.localeCompare(b.checkInDate)),
+            updatedAt: new Date().toISOString(),
+          })),
+        }));
+        return stay;
+      },
+
+      updateStay: (tripId, stayId, patch) =>
+        set((state) => ({
+          trips: mapTrip(state.trips, tripId, (trip) => {
+            const next = (trip.stays ?? []).map((stay) => (stay.id === stayId ? { ...stay, ...patch } : stay));
+            // The edit is stored even when it now overlaps: dropping the
+            // traveller's input silently would be worse than showing the
+            // conflict, and the editor marks it.
+            return {
+              ...trip,
+              stays: next.sort((a, b) => a.checkInDate.localeCompare(b.checkInDate)),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      removeStay: (tripId, stayId) =>
+        set((state) => ({
+          trips: mapTrip(state.trips, tripId, (trip) => ({
+            ...trip,
+            stays: (trip.stays ?? []).filter((stay) => stay.id !== stayId),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      setDefaultStartTime: (tripId, time) =>
+        set((state) => ({
+          trips: mapTrip(state.trips, tripId, (trip) => ({
+            ...trip,
+            defaultStartTime: time,
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      setDayStartTime: (tripId, dayId, time) =>
+        set((state) => ({
+          trips: mapTrip(state.trips, tripId, (trip) => ({
+            ...trip,
+            days: trip.days.map((day) => (day.id === dayId ? { ...day, startTime: time } : day)),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
       setDayNote: (tripId, dayId, note) =>
         set((state) => ({ trips: mapTrip(state.trips, tripId, (trip) => setDayNote(trip, dayId, note)) })),
 
@@ -234,10 +320,21 @@ export async function hydrateTripStore() {
      * without one.
      */
     const { trips } = useTripStore.getState();
-    if (trips.some((trip) => !trip.originCityId)) {
-      useTripStore.setState({
-        trips: trips.map((trip) => (trip.originCityId ? trip : { ...trip, originCityId: 'singapore' })),
-      });
+
+    /*
+     * Two migrations, both idempotent, so this can run on every load.
+     *
+     * The second is the accommodation model. Hotels used to be ordinary
+     * itinerary rows; `migrateTripToStays` converts only the runs that cannot
+     * mean anything else and leaves every ambiguous row exactly as it was, so a
+     * traveller's trip is never rewritten on a guess.
+     */
+    const migrated = trips.map((trip) => {
+      const withOrigin = trip.originCityId ? trip : { ...trip, originCityId: 'singapore' };
+      return migrateTripToStays(withOrigin);
+    });
+    if (migrated.some((trip, index) => trip !== trips[index])) {
+      useTripStore.setState({ trips: migrated });
     }
   } catch {
     // Private browsing / storage disabled: the app still works, just without

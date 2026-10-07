@@ -54,6 +54,10 @@ export function createTrip(draft: TripDraft, destination: Destination): Trip {
     budget: draft.budget,
     loyalty: draft.loyalty ?? [],
     days,
+    // A new trip carries the accommodation model from the start, so nothing has
+    // to be migrated for it, and every day has a defineable start time.
+    stays: [],
+    defaultStartTime: '09:00',
     createdAt: now,
     updatedAt: now,
   };

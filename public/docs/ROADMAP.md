@@ -250,6 +250,29 @@ Still open:
 
 ---
 
+## V1.6 — accommodation as stays
+
+- **A stay is a hotel and a date range**, not a hotel row repeated on each day. Day
+  start and end anchors are DERIVED from the stays, so a hotel-change day falls out
+  of the data instead of being declared.
+- **The change day is routed for real**: `Hotel A → stops → Hotel B` through the
+  existing provider, so the hotel-to-hotel drive is measured.
+- **The 09:00 assumption is gone.** A trip default with per-day overrides, and a
+  time change recomputes the clock without re-requesting the routes.
+- **Fixed times are bookings**: early arrival shows usable waiting time, late
+  arrival shows a conflict, and the time is never moved.
+- **Migration refuses to guess.** Only a hotel repeated on consecutive days is
+  converted; an ambiguous single row is preserved exactly as it was.
+
+Still open:
+
+- **No optimiser on the change day.** The model supports placing sensible stops on
+  a moving day; nothing reorders them yet.
+- **No live flights.** `origin → airport → first hotel` is expressible through the
+  arrival anchor and is not computed.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces

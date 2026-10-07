@@ -80,14 +80,20 @@
       "passed": 185,
       "consoleErrors": 0
     },
-    "productionBuild": "passes; 12 destinations pre-rendered"
+    "productionBuild": "passes; 12 destinations pre-rendered",
+    "tripAccommodation": {
+      "checks": 111,
+      "passed": 111,
+      "command": "npm run test:trip"
+    }
   },
   "knownLimitations": [
+    "Accommodation is a stay, not a booking: no confirmation number, no room type, no rate.",
+    "A hotel-change day is routed sensibly but ACTIVITIES are not yet reordered around it. The data model supports that optimisation; the optimiser is not built.",
+    "Arrival and departure anchors use the airport item already on the day. Origin -> airport -> hotel is expressible and not yet computed.",
     "Five loyalty programmes, not every programme: Accor Live Limitless and Wyndham Rewards are absent rather than half-populated.",
-    "Penang has no open Hyatt, so its STAY filter offers four programmes; Boracay has one loyalty hotel and Palawan one. These are verified ceilings.",
-    "32 places are approximate or unlocatable after the coordinate audit.",
-    "Imported guides, saved places and images live in one browser; there are no accounts.",
-    "The new Malaysian and expanded records carry no licensed photography and fall back to the no-photograph state.",
+    "Photography did not grow with the data; new records show the no-photograph state rather than borrowing a neighbour image.",
+    "Imported guides, saved places, trips and images live in one browser; there are no accounts.",
     "No prices anywhere — hotel cost is a positioning tier with its basis displayed."
   ],
   "documents": {
@@ -374,8 +380,15 @@
     "refresh": "Every record carries source and verifiedAt so it can be re-checked. Nothing refreshes automatically yet."
   },
   "tripModel": {
-    "originCityId": "Trips store where they depart from.",
-    "migration": "A zustand version-1 migration stamps singapore on trips saved before origins existed, plus a hydrate backstop for payloads with no version field. Days, items and dates are untouched."
+    "stays": "TripStay { hotelPlaceId, checkInDate, checkOutDate } — accommodation is a stay over a date range, not a hotel row repeated on each day. checkOutDate is exclusive.",
+    "derivedAnchors": "DayAnchors { start, end, isHotelChange, missingAccommodation } are DERIVED from the stays on every render and never stored, so editing a stay or a trip date moves every affected day with no invalidation.",
+    "nightRule": "start = the stay covering LAST night; end = the stay covering tonight. A hotel-change day therefore falls out of the data rather than being declared.",
+    "routing": "startAnchor -> ordered items -> endAnchor, through the existing routing provider. The hotel-to-hotel leg on a change day is MEASURED like any other drive, not asserted as metadata.",
+    "arrivalDeparture": "An airport item already present on the day becomes the start anchor on an arrival day and the end anchor on a departure day, so origin -> airport -> hotel is expressible without a second model. No live flight integration.",
+    "startTime": "Trip default (defaultStartTime, 09:00) with a per-day override (day.startTime).",
+    "fixedTime": "ItineraryItem.fixedTime is a BOOKING. The schedule reports usable waiting time when it arrives early and a conflict when it arrives late; it never moves the time.",
+    "migration": "Hotels stored as itinerary rows convert to stays ONLY when the same hotel repeats on two or more consecutive days. A single row is ambiguous and is preserved exactly as it was. Idempotent.",
+    "separation": "Place (canonical) / TripStay (a booking) / ItineraryItem (a visit) / DayAnchor (derived) / TransportLeg (a route) are five separate concepts and none is a copy of another."
   },
   "localizedArrays": "bestFor, weakFor and tags carry positionally-aligned Chinese variants. The validator checks alignment, because pickList falls back per index and a mismatch degrades into a half-Chinese line that reads as a bug.",
   "loyaltyProgrammes": {

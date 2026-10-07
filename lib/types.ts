@@ -701,6 +701,15 @@ export interface ItineraryItem {
   note?: string;
   /** Pinned items keep their position when the day is auto-sorted. */
   pinned?: boolean;
+  /**
+   * `HH:MM` the traveller must be there.
+   *
+   * A booking time, not a preference. The schedule flows around normal items and
+   * reports whether it arrives early (usable waiting time) or late (a conflict) —
+   * it never moves the time, because the time is the one thing here the traveller
+   * cannot change.
+   */
+  fixedTime?: string;
   confidence: DataConfidence;
 }
 
@@ -713,6 +722,102 @@ export interface TripDay {
   items: ItineraryItem[];
   /** Optional user note for the day. */
   note?: string;
+  /**
+   * `HH:MM` override for when this day starts.
+   *
+   * Absent means "use the trip default", which is not the same as storing the
+   * default here — a later change to the trip default should move the days the
+   * traveller never overrode.
+   */
+  startTime?: string;
+}
+
+/**
+ * One accommodation stay.
+ *
+ * WHY THIS IS NOT AN ITINERARY ITEM
+ * ---------------------------------
+ * A hotel is not a place you visit, it is where you ARE. Modelling it as an
+ * itinerary item meant adding W Bali to the timeline on the 10th, the 11th and
+ * again on the 12th, and nothing in the data said those three rows were the same
+ * booking. Every derived fact the itinerary needs — where the day starts, where
+ * it ends, whether today is a hotel-change day, whether a night is unbooked —
+ * is a property of the STAY, not of a row on a day.
+ *
+ * `checkOutDate` is EXCLUSIVE: a stay from the 10th to the 12th covers the nights
+ * of the 10th and the 11th, which is how a hotel booking is actually read.
+ */
+export interface TripStay {
+  id: string;
+  /** Canonical `Hotel` id. Never a copy of the hotel record. */
+  hotelPlaceId: string;
+  /** ISO `yyyy-mm-dd`. */
+  checkInDate: string;
+  /** ISO `yyyy-mm-dd`, exclusive — the morning the traveller leaves. */
+  checkOutDate: string;
+  note?: string;
+}
+
+/** What kind of thing a day's anchor is. */
+export type AnchorKind = 'hotel' | 'airport' | 'origin' | 'custom';
+
+/**
+ * Where a day starts or ends.
+ *
+ * DERIVED, never stored. It is computed from the trip's stays, so a stay edit or
+ * a date change moves every affected day with no bookkeeping and no chance of
+ * the timeline disagreeing with the accommodation list.
+ *
+ * The `kind` exists for the arrival/departure case: today the anchors are hotels,
+ * and the same shape already carries an airport or an origin so that
+ * origin → airport → first hotel can be expressed later without a second model.
+ */
+export interface DayAnchor {
+  id: string;
+  kind: AnchorKind;
+  /** The canonical record this points at, when there is one. */
+  refId?: string;
+  name: string;
+  nameZh?: string;
+  lat: number;
+  lng: number;
+  areaId?: string;
+  confidence: DataConfidence;
+  /**
+   * The itinerary kind this anchor behaves as for transport purposes.
+   *
+   * An anchor is not an item, but the transport recommender reads an item's
+   * `kind` to tell an airport transfer from a cross-town drive. Carrying the
+   * equivalent here keeps that reasoning intact without pretending an anchor is
+   * an itinerary row.
+   */
+  itemKind?: MarkerLayer;
+}
+
+/** The anchors derived for one day, and what they imply. */
+export interface DayAnchors {
+  /** Where the traveller wakes up. Null on the first day, or when unbooked. */
+  start: DayAnchor | null;
+  /** Where the traveller sleeps. Null on the last day, or when unbooked. */
+  end: DayAnchor | null;
+  /**
+   * The traveller sleeps somewhere different tonight.
+   *
+   * True only when BOTH anchors are hotels and they differ. An arrival day has a
+   * start of null, which is not a hotel change.
+   */
+  isHotelChange: boolean;
+  /**
+   * A night with no booking.
+   *
+   * The interface warns; it never invents a hotel. False on the final day, whose
+   * night is not spent.
+   */
+  missingAccommodation: boolean;
+  /** The stay being left today, when the day is a change or a departure. */
+  fromStayId?: string;
+  /** The stay being moved into today. */
+  toStayId?: string;
 }
 
 export type LoyaltyProgrammeId = 'marriott-bonvoy' | 'hilton-honors';
@@ -737,6 +842,15 @@ export interface Trip {
   budget?: PriceTier;
   loyalty: LoyaltyProgrammeId[];
   days: TripDay[];
+  /**
+   * Accommodation, in chronological order.
+   *
+   * Optional on the type because trips saved before stays existed do not have it;
+   * the store migrates those on load. New trips always set it.
+   */
+  stays?: TripStay[];
+  /** `HH:MM`. Absent means the product default, currently 09:00. */
+  defaultStartTime?: string;
   createdAt: string;
   updatedAt: string;
 }

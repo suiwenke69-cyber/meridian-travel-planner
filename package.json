@@ -22,7 +22,8 @@
     "test:social": "tsx scripts/test-social-import.mts",
     "test:all": "npm run typecheck && npm run validate:data && npm run verify:coords && npm run test:social",
     "verify:coords": "tsx scripts/verify-coords.mts",
-    "verify:coords:geo": "tsx scripts/verify-coords.mts --geocode"
+    "verify:coords:geo": "tsx scripts/verify-coords.mts --geocode",
+    "test:trip": "tsx scripts/test-trip-stays.mts"
   },
   "dependencies": {
     "maplibre-gl": "^6.12.0",

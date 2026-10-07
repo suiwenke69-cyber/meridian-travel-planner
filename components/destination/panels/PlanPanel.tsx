@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Destination, ItineraryItem, Place, Hotel, Trip, TripDay } from '@/lib/types';
+import type { DayAnchors, Destination, ItineraryItem, Place, Hotel, Trip, TripDay } from '@/lib/types';
 import { formatDateShort, formatStayRange, nightCount } from '@/lib/date';
 
 import { daySeverity } from '@/lib/efficiency';
@@ -18,7 +18,11 @@ import { pick } from '@/lib/i18n';
 import { ImageFrame } from '../../ui/ImageFrame';
 import { TransportLegRow } from '../TransportLegRow';
 import { TripSetupForm } from '../../planner/TripSetupForm';
+import { StayEditor } from './StayEditor';
+import { DayTimeline } from './DayTimeline';
 import { ImportGuideCta } from '../../social/ImportGuideCta';
+import { deriveTripAnchors } from '@/lib/trip-stays';
+import { DEFAULT_START_TIME } from '@/lib/schedule';
 import { IconArrowDown, IconArrowUp, IconClose, IconGrip, IconPlus } from '../../ui/icons';
 
 /**
@@ -55,6 +59,19 @@ export function PlanPanel({
   const t = useT();
   const locale = useLocale();
   const [showPreferences, setShowPreferences] = useState(false);
+
+  /*
+   * Anchors are DERIVED, per render, from the trip's stays.
+   *
+   * Nothing about accommodation is stored on a day, so this cannot go stale: edit
+   * a stay, change a trip date, or delete a booking and every day's start and end
+   * follow immediately, with no invalidation to remember.
+   *
+   * Computed ABOVE the early returns on purpose. Placing it after them changed the
+   * number of hooks between renders the moment a trip was created, which is the
+   * one React rule that fails loudly in the browser and silently everywhere else.
+   */
+  const anchors = useMemo(() => (trip ? deriveTripAnchors(trip, hotels) : new Map<string, DayAnchors>()), [trip, hotels]);
   const setPanelTab = useUiStore((s) => s.setPanelTab);
 
   if (!hydrated) {
@@ -113,15 +130,19 @@ export function PlanPanel({
       {showPreferences ? (
         <div className="scroll-area min-h-0 flex-1">
           <TripSetupForm destination={destination} trip={trip} onDone={() => setShowPreferences(false)} />
+          <TripStartTime trip={trip} />
         </div>
       ) : (
         <>
           <ImportGuideCta variant="row" />
+          {/* Accommodation first: it decides the shape of every day below it. */}
+          <StayEditor trip={trip} hotels={hotels} />
           <DayTabs trip={trip} activeDayId={activeDay?.id ?? null} analyses={analyses} onSelectDay={onSelectDay} />
           {activeDay && (
             <DayTimeline
               trip={trip}
               day={activeDay}
+              anchors={anchors.get(activeDay.id) ?? EMPTY_ANCHORS}
               analysis={analyses.find((a) => a.dayId === activeDay.id)}
               places={places}
               hotels={hotels}
@@ -134,6 +155,44 @@ export function PlanPanel({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The trip-wide default start time.
+ *
+ * Sits with the other trip settings rather than on each day, because most trips
+ * leave at the same time every morning and a per-day value is the exception. A
+ * day that overrides it keeps its own value — changing this moves only the days
+ * the traveller never touched.
+ */
+function TripStartTime({ trip }: { trip: Trip }) {
+  const t = useT();
+  const setDefaultStartTime = useTripStore((s) => s.setDefaultStartTime);
+  const overriddenCount = trip.days.filter((day) => day.startTime).length;
+
+  return (
+    <section className="border-t border-line px-3 py-3" data-testid="trip-start-time">
+      <p className="label-caps mb-1.5">{t('plan.tripSettings')}</p>
+      <div className="flex items-center gap-2">
+        <label className="text-[12px] text-ink-soft" htmlFor="trip-default-start">
+          {t('plan.defaultStartTime')}
+        </label>
+        <input
+          id="trip-default-start"
+          type="time"
+          className="field w-[104px] px-2 py-1 text-[12px]"
+          value={trip.defaultStartTime ?? DEFAULT_START_TIME}
+          data-testid="trip-default-start"
+          onChange={(event) => setDefaultStartTime(trip.id, event.target.value)}
+        />
+      </div>
+      {overriddenCount > 0 && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+          {t('plan.daysOverridden', { count: overriddenCount })}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -198,282 +257,18 @@ function DayTabs({
  * only. If any leg has no routing data the whole day is marked approximate
  * rather than quietly showing a confident-looking clock.
  */
-function DayTimeline({
-  trip,
-  day,
-  analysis,
-  places,
-  hotels,
-  areaNameById,
-  destination,
-  destinationId,
-  onAddStop,
-}: {
-  trip: Trip;
-  day: TripDay;
-  analysis?: DayAnalysis;
-  places: Place[];
-  hotels: Hotel[];
-  areaNameById: Map<string, string>;
-  destination: Destination;
-  destinationId: string;
-  onAddStop: () => void;
-}) {
-  const t = useT();
-  const n = useName();
-  const locale = useLocale();
-  const { legs, loading, totals } = useDayLegs(day);
-  const addItem = useTripStore((s) => s.addItem);
-  const removeItem = useTripStore((s) => s.removeItem);
-  const reorderItem = useTripStore((s) => s.reorderItem);
-  const selectedItemId = useUiStore((s) => s.selectedItemId);
-  const selectItem = useUiStore((s) => s.selectItem);
-  const selectLeg = useUiStore((s) => s.selectLeg);
-  const selectedLegId = useUiStore((s) => s.selectedLegId);
-  const setHoveredItem = useUiStore((s) => s.setHoveredItem);
-  const requestFocus = useUiStore((s) => s.requestFocus);
-
-  const startMinutes = 9 * 60;
-
-  const schedule = useMemo(() => {
-    let clock = startMinutes;
-    const rows: Array<{ item: ItineraryItem; time: string }> = [];
-    day.items.forEach((item, index) => {
-      rows.push({ item, time: formatClock(clock) });
-      clock += item.durationMin ?? 0;
-      const leg = legs[index];
-      if (leg?.durationSeconds != null) clock += Math.round(leg.durationSeconds / 60);
-    });
-    return rows;
-  }, [day.items, legs]);
-
-  const partial = totals.unavailable > 0;
-  const crossAreaCount = analysis?.crossAreaHops ?? 0;
-
-  const lookup = useMemo(() => {
-    const map = new Map<string, { image?: ReturnType<typeof heroImage>; subtitle: string }>();
-    for (const item of day.items) {
-      const place = places.find((p) => p.id === item.refId);
-      const hotel = hotels.find((h) => h.id === item.refId);
-      const source = place ?? hotel;
-      map.set(item.id, {
-        image: source ? heroImage(place ? 'place' : 'hotel', source.id) : undefined,
-        subtitle: [item.areaName ?? areaNameById.get(item.areaId ?? ''), item.durationMin ? formatMinutes(item.durationMin, t) : null]
-          .filter(Boolean)
-          .join(' · '),
-      });
-    }
-    return map;
-  }, [day.items, places, hotels, areaNameById, t]);
-
-  return (
-    <div className="scroll-area min-h-0 flex-1 px-3 py-3">
-      {/* day summary */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
-        <span className="font-semibold text-ink">{t('plan.day', { n: day.index + 1 })}</span>
-        {day.items.length === 0 ? (
-          <span className="text-muted">{t('plan.nothingPlanned')}</span>
-        ) : loading ? (
-          <span className="text-muted">{t('plan.measuringTravel')}</span>
-        ) : (
-          <>
-            {totals.measured > 0 && (
-              <span className="tabular-nums text-ink-soft">
-                {t('plan.travelTotal', {
-                  distance: t('unit.km', { value: (totals.distanceMeters / 1000).toFixed(1) }),
-                  duration: formatMinutes(totals.durationSeconds / 60, t),
-                })}
-              </span>
-            )}
-            {partial && (
-              <span className="rounded-full border border-warn/30 bg-warn/[0.07] px-2 py-[2px] text-[10.5px] font-medium text-warn">
-                {t('plan.legsUnavailable', { count: totals.unavailable })}
-              </span>
-            )}
-            {crossAreaCount >= 2 && (
-              <span className="rounded-full border border-line px-2 py-[2px] text-[10.5px] text-muted">
-                {t('plan.crossesAreas', { count: crossAreaCount + 1 })}
-              </span>
-            )}
-          </>
-        )}
-      </div>
-
-      {day.items.length === 0 ? (
-        <div className="rounded-card border border-dashed border-line-strong bg-paper px-4 py-8 text-center">
-          <p className="text-[13px] font-semibold text-ink">{t('plan.dayEmpty', { n: day.index + 1 })}</p>
-          <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] leading-relaxed text-muted">
-            {t('plan.dayEmptyHint')}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-            <button type="button" className="btn-secondary btn-xs" onClick={onAddStop}>
-              {t('plan.findPlaces')}
-            </button>
-            {destination.airports[0] && (
-              <button
-                type="button"
-                className="btn-secondary btn-xs"
-                onClick={() =>
-                  addItem(
-                    trip.id,
-                    day.id,
-                    itemFromAirport(destination.airports[0], day.index === 0 ? 'arrival' : 'departure'),
-                  )
-                }
-              >
-                {t('plan.addAirport', {
-                  code: destination.airports[0].code,
-                  kind: t(day.index === 0 ? 'plan.arrivalLabel' : 'plan.departureLabel'),
-                })}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <ol className="space-y-0">
-          {schedule.map(({ item, time }, index) => {
-            const leg = legs[index];
-            const meta = lookup.get(item.id);
-            const selected = selectedItemId === item.id;
-            return (
-              <li key={item.id}>
-                <div
-                  className={cn(
-                    'group flex gap-2.5 rounded-lg p-2 transition-colors duration-150',
-                    selected ? 'bg-accent-soft' : 'hover:bg-black/[0.025]',
-                  )}
-                  onMouseEnter={() => setHoveredItem(item.id)}
-                  onMouseLeave={() => setHoveredItem(null)}
-                  data-testid={`itinerary-item-${item.id}`}
-                >
-                  <div className="w-[42px] shrink-0 pt-0.5 text-right">
-                    <span className="block text-[11.5px] font-semibold tabular-nums text-ink-soft">{time}</span>
-                    {partial && <span className="block text-[9.5px] text-faint">{t('plan.timeApprox')}</span>}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="shrink-0"
-                    onClick={() => {
-                      selectItem(item.id);
-                      requestFocus(item.lat, item.lng, 14);
-                    }}
-                    aria-label={t('label.showOnMap')}
-                  >
-                    <ImageFrame
-                      image={meta?.image}
-                      variant="thumb"
-                      className="w-12 rounded-md"
-                      showDisclosure={false}
-                      fallbackLabel={pick(item.nameZh, item.name, locale)}
-                    />
-                  </button>
-
-                  <div className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      className="block w-full text-left"
-                      onClick={() => {
-                        selectItem(item.id);
-                        requestFocus(item.lat, item.lng, 14);
-                      }}
-                    >
-                      <span className="block text-[13.5px] font-semibold leading-snug tracking-[-0.005em] text-ink">
-                        {pick(item.nameZh, item.name, locale)}
-                      </span>
-                      <span className="mt-0.5 block text-[11.5px] text-muted">{meta?.subtitle || item.kind}</span>
-                    </button>
-                  </div>
-
-                  <div className="flex shrink-0 items-start gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                    <button
-                      type="button"
-                      className="btn-ghost btn-xs px-1"
-                      onClick={() => index > 0 && reorderItem(trip.id, day.id, item.id, index - 1)}
-                      disabled={index === 0}
-                      aria-label={t('plan.moveEarlier')}
-                      data-testid={`move-up-${item.id}`}
-                    >
-                      <IconArrowUp size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost btn-xs px-1"
-                      onClick={() => index < day.items.length - 1 && reorderItem(trip.id, day.id, item.id, index + 1)}
-                      disabled={index === day.items.length - 1}
-                      aria-label={t('plan.moveLater')}
-                      data-testid={`move-down-${item.id}`}
-                    >
-                      <IconArrowDown size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost btn-xs px-1 text-muted hover:text-danger"
-                      onClick={() => removeItem(trip.id, item.id)}
-                      aria-label={t('plan.remove')}
-                      data-testid={`remove-item-${item.id}`}
-                    >
-                      <IconClose size={13} />
-                    </button>
-                  </div>
-                </div>
-
-                {leg && (
-                  <TransportLegRow
-                    leg={leg}
-                    selected={selectedLegId === leg.id}
-                    onSelect={() => {
-                      selectLeg(leg.id);
-                      requestFocus(
-                        (item.lat + (day.items[index + 1]?.lat ?? item.lat)) / 2,
-                        (item.lng + (day.items[index + 1]?.lng ?? item.lng)) / 2,
-                        12,
-                      );
-                    }}
-                    onHover={(id) => setHoveredItem(id)}
-                  />
-                )}
-              </li>
-            );
-          })}
-
-          <li className="pt-2">
-            <button
-              type="button"
-              className="btn-ghost btn-xs w-full border border-dashed border-line-strong text-muted"
-              onClick={onAddStop}
-            >
-              <IconPlus size={13} />
-              {t('plan.addAnotherStop')}
-            </button>
-          </li>
-        </ol>
-      )}
-
-      {analysis && analysis.suggestions.length > 0 && (
-        <section className="mt-4 rounded-card border border-line bg-paper px-3 py-2.5">
-          <p className="label-caps mb-1.5">{t('plan.routeNotes')}</p>
-          <ul className="space-y-2">
-            {analysis.suggestions.slice(0, 3).map((suggestion) => (
-              <li key={suggestion.id} className="text-[11.5px] leading-relaxed text-ink-soft">
-                <span className="font-semibold text-ink">{suggestion.title}. </span>
-                {suggestion.detail}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[10.5px] leading-relaxed text-faint">
-            {t('plan.routeNotesDisclaimer')}
-          </p>
-        </section>
-      )}
-
-      <p className="mt-3 text-[10.5px] leading-relaxed text-faint">
-        {t('plan.timeDisclaimer')}
-        {destinationId ? '' : ''}
-      </p>
-    </div>
-  );
-}
+/**
+ * The anchors of a day that has not been derived yet.
+ *
+ * Only reachable for the single render before `useMemo` settles, and an empty
+ * anchor set renders as "no start, no end" rather than as anything invented.
+ */
+const EMPTY_ANCHORS: DayAnchors = {
+  start: null,
+  end: null,
+  isHotelChange: false,
+  missingAccommodation: false,
+};
 
 /** 90 -> 1 小时 30 分钟 / 1 h 30 min. Never a bare "90". */
 function formatMinutes(minutes: number, t: ReturnType<typeof useT>): string {
