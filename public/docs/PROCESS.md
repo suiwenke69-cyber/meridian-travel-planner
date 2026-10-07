@@ -1904,7 +1904,7 @@ measured transport rows are ~760px of content; no collapsed summary makes that f
 What the fix guarantees is that the window belongs to the itinerary.
 
 `scripts/check-plan-space.mjs` builds exactly that trip through the UI and asserts
-all of the above — 26 checks, including that no hotel select or date input exists
+all of the above — 28 checks, including that no hotel select or date input exists
 outside edit mode, that the summary survives a day switch, and that the session
 remembers the editor was left open.
 

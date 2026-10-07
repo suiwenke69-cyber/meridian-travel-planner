@@ -94,8 +94,8 @@
       "note": "the 15-step My Trips acceptance scenario driven through the real UI at 1440x900, zero console errors"
     },
     "planPanelSpace": {
-      "checks": 26,
-      "passed": 26,
+      "checks": 28,
+      "passed": 28,
       "command": "node scripts/check-plan-space.mjs",
       "note": "builds the 3-hotel/4-day trip through the UI and measures the panel at 1440x900"
     }
