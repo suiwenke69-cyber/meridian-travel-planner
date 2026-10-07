@@ -1789,3 +1789,86 @@ the DO panel's two iterations earlier, with the same symptom.
    data are out of scope.
 4. **Unbooked nights warn and nothing else.** The model never invents a hotel, and
    it does not suggest one either.
+
+---
+
+# Iteration 11 — 我的行程 as a real entity
+
+The previous pass gave a trip an accommodation model. It still did not have a
+home. A trip existed because the planner had put you into planning mode, and the
+only way back to one was to remember which destination you had started from and
+whether the store had rehydrated. This pass makes the trip the object and the
+planner one of its doors.
+
+## 1. The list is not a menu
+
+My Trips answers a question the product previously could not: *what have I
+actually got?* Each card carries the destination, the dates and night count, the
+travellers, the accommodation in hotel order, and the number of planned places —
+deliberately excluding hotel and airport rows, because a stay is not a place you
+visit. Trips are grouped active → upcoming → past, and within a group the soonest
+comes first. A past trip sorts below every future one; an in-progress trip sorts
+above both.
+
+## 2. A trip page, not planning mode
+
+The detail page is `/trips/detail/?id=…`, not `/trips/[id]`. Trip ids are created
+at runtime, so a static export cannot prerender a route segment for them; a query
+parameter inside a Suspense boundary is the honest shape for a page whose only
+argument is a client-side id. The 行程单 and 地图 tabs read the same trip, and the
+map only requests routes when a single day is selected — a whole-trip map would
+otherwise ask the routing provider for every leg at once to draw lines nobody
+asked for.
+
+## 3. Everything visible is editable
+
+Dates and travellers, a stay's hotel and check-in/check-out, a day's start time,
+and a stop's position, day and fixed time are all edited in place on the page that
+shows them. Editing the end date re-derives the days **by date**, not by index, so
+stays, per-day start times and the stops on them survive. That mapping bug is easy
+to write and was caught by a test that changes the end date after setting both.
+
+## 4. Deleting asks first, duplicating does not lie
+
+Delete is two-step and stays two-step. Duplicate copies the days, the stops and
+the stays — with **new stay ids**, because sharing them would make the copy and the
+original the same accommodation object, and editing one would silently edit the
+other.
+
+## 5. Migration that refuses to guess, again
+
+Old trips have no `stays` and no start times. Migration converts a hotel repeated
+on consecutive days into a stay and preserves anything ambiguous as it was; the
+default start time is 09:00 only where nothing was ever set. Both migrations are
+idempotent, so rehydrating twice is the same as rehydrating once.
+
+## 6. The Social Import link is prepared, not built
+
+An import can record which trip it fed, and the places it saved can be read back
+for a trip. That is the whole relationship for now: no automatic itinerary merge,
+no implicit place creation.
+
+## 7. Verification
+
+- `npx tsc --noEmit` — clean.
+- `npm run validate:data` — passes.
+- `npm run verify:coords` — 0 failures, 37 expected warnings.
+- `npm run test:social` — 224/224.
+- `npm run test:trip` — 128/128, now including trip phase, ordering, summaries
+  and the planned-place count.
+- `npm run test:trips` — 42/42, the 15-step acceptance scenario driven through the
+  real UI at 1440×900, zero console errors.
+- `npm run test:e2e` — 196/196, zero console errors: the full V1 workflow plus a
+  condensed My Trips pass.
+- `npm run build:static` — `/trips` and `/trips/detail` both export.
+
+## Known limitations after this pass
+
+1. **One browser, no account.** Trips are `localStorage`; clearing site data
+   deletes them.
+2. **No export or share.** No PDF, no calendar, no link.
+3. **The import link is one-directional.** A trip can name its import; nothing
+   proposes an itinerary from one.
+4. **A duplicate is a full copy.** There is no "reuse this trip's hotels for new
+   dates" operation beyond duplicating and editing the copy's dates.
+5. **The list does not show cost, flights or bookings** — none of which exist.

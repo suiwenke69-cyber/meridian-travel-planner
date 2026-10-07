@@ -6,6 +6,7 @@ import { getAreas, getDestinationBundle, getHotels, getPlaces } from '@/lib/data
 import { useResearchStore, imagesForCandidate } from '@/lib/research/store';
 import { useImportUiStore } from '@/lib/store/import-ui';
 import { useUiStore } from '@/lib/store/ui-store';
+import { useTripStore } from '@/lib/store/trip-store';
 import { useT, useName } from '@/lib/i18n/use-t';
 import type { MessageKey } from '@/lib/i18n/messages';
 import { detectPlatform, isXiaohongshuUrl } from '@/lib/research/platforms';
@@ -117,6 +118,12 @@ export function XiaohongshuImportPanel({ destinationId }: { destinationId: strin
   const detected = useMemo(() => detectPlatform(url), [url]);
   const urlIsForeign = url.trim().length > 0 && !isXiaohongshuUrl(url) && /^https?:/i.test(url.trim());
 
+  // The trip this guide is being gathered for, if the traveller has one active.
+  const activeTripId = useTripStore((s) => {
+    const active = s.trips.find((trip) => trip.id === s.activeTripId);
+    return active && active.destinationId === destinationId ? active.id : null;
+  });
+
   const selectedIds = useMemo(
     () => candidates.filter((entry) => entry.userDecision === 'save').map((entry) => entry.id),
     [candidates],
@@ -178,7 +185,11 @@ export function XiaohongshuImportPanel({ destinationId }: { destinationId: strin
       let id = draftRef.current ?? record?.id ?? null;
       if (!id) {
         // Marked as one image so an images-only import is not rejected as empty.
-        const started = startImport({ destinationId, imageCount: Math.max(1, files.length) });
+        const started = startImport({
+          destinationId,
+          imageCount: Math.max(1, files.length),
+          tripId: useTripStore.getState().activeTripId ?? undefined,
+        });
         if (started.violation) {
           setError(started.violation.messageKey);
           return;
@@ -248,7 +259,15 @@ export function XiaohongshuImportPanel({ destinationId }: { destinationId: strin
     let id = draftId;
     try {
       if (!id) {
-        const started = startImport({ url: trimmedUrl || undefined, text: trimmedText || undefined, destinationId, userNotes: notes.trim() || undefined });
+        const started = startImport({
+          url: trimmedUrl || undefined,
+          text: trimmedText || undefined,
+          destinationId,
+          userNotes: notes.trim() || undefined,
+          // Records the trip this guide was gathered for. The import flow itself
+          // does not read the itinerary; this is the whole of the relationship.
+          tripId: activeTripId ?? undefined,
+        });
         if (started.violation) {
           setError(started.violation.messageKey);
           return;

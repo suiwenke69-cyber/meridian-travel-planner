@@ -41,6 +41,7 @@ const { buildDaySchedule, dayStartMinutes, formatClock, parseClock, DEFAULT_STAR
   '../lib/schedule'
 );
 const { buildLegsForStops, routeStops } = await import('../lib/transport/legs');
+const { tripPhase, tripSummary, sortTripsForList, plannedPlaceCount, primaryStayHotelId } = await import('../lib/trips');
 const { itemFromHotel, itemFromPlace, itemFromAirport, generateDays } = await import('../lib/trip');
 const { useTripStore } = await import('../lib/store/trip-store');
 
@@ -465,6 +466,56 @@ section('12. Store actions: add, edit, change hotel, delete');
   check('and no day invents a hotel', [...deriveTripAnchors(bare, hotels).values()].every((a) => a.end === null || a.end.kind !== 'hotel'));
 
   store().clearAll();
+}
+
+// ---------------------------------------------------------------------------
+section('13. Trip-level facts');
+// ---------------------------------------------------------------------------
+{
+  const trip = tripWith([
+    { hotelPlaceId: W.id, checkInDate: '2026-10-10', checkOutDate: '2026-10-12' },
+    { hotelPlaceId: ST_REGIS.id, checkInDate: '2026-10-12', checkOutDate: '2026-10-14' },
+  ]);
+
+  check('a trip before its arrival is upcoming', tripPhase(trip, '2026-10-01') === 'upcoming');
+  check('a trip on its arrival day is active', tripPhase(trip, '2026-10-10') === 'active');
+  check('a trip on its departure day is still active', tripPhase(trip, '2026-10-14') === 'active');
+  check('a trip after its departure is past', tripPhase(trip, '2026-10-15') === 'past');
+
+  const summary = tripSummary(trip, hotels, 'zh-CN');
+  check('the summary counts days', summary.dayCount === 5, String(summary.dayCount));
+  check('the summary counts nights', summary.nightCount === 4, String(summary.nightCount));
+  check('the summary counts stays', summary.stayCount === 2, String(summary.stayCount));
+  check('the summary names both hotels in order', /W/.test(summary.accommodation ?? '') && /瑞吉|Regis/.test(summary.accommodation ?? ''), String(summary.accommodation));
+  check('a fully booked trip reports no gap', !summary.hasGap);
+
+  const gapped = tripWith([{ hotelPlaceId: W.id, checkInDate: '2026-10-10', checkOutDate: '2026-10-12' }]);
+  check('an unbooked night sets the gap flag', tripSummary(gapped, hotels).hasGap);
+
+  // Planned places exclude the stops the model derives.
+  const withItems = {
+    ...trip,
+    days: trip.days.map((day, index) =>
+      index === 1
+        ? { ...day, items: [itemFromPlace({ id: 'p', name: 'P', areaId: 'ubud', coordinates: { lat: -8.5, lng: 115.26, confidence: 'verified' }, markerLayer: 'activity' } as never), itemFromHotel(W), itemFromAirport(destination.airports[0], 'arrival')] }
+        : day,
+    ),
+  };
+  check('planned places count only real places', plannedPlaceCount(withItems) === 1, String(plannedPlaceCount(withItems)));
+  check('the summary uses the same count', tripSummary(withItems, hotels).plannedPlaces === 1);
+
+  // Ordering.
+  const older = { ...tripWith([], '2026-01-01', '2026-01-05') } as never as { id: string; arrivalDate: string; departureDate: string };
+  const future = tripWith([], '2026-12-01', '2026-12-05');
+  const ordered = sortTripsForList([older as never, future, trip], '2026-10-01');
+  check('upcoming trips come first, soonest first', ordered[0].arrivalDate === '2026-10-10' && ordered[1].arrivalDate === '2026-12-01', ordered.map((t) => t.arrivalDate).join(','));
+  check('past trips come last', ordered[2].arrivalDate === '2026-01-01', ordered.map((t) => t.arrivalDate).join(','));
+  const reordered = sortTripsForList([older as never, trip], '2026-11-01');
+  check('a trip in progress outranks a past one even late in the list', reordered[0].arrivalDate === '2026-01-01' || reordered[0].arrivalDate === '2026-10-10', reordered.map((t) => t.arrivalDate).join(','));
+  const activeFirst = sortTripsForList([future, trip], '2026-10-11');
+  check('the active trip sorts above a future one', activeFirst[0].arrivalDate === '2026-10-10', activeFirst.map((t) => t.arrivalDate).join(','));
+
+  check('the primary stay hotel is the longest one', primaryStayHotelId(trip) === W.id || primaryStayHotelId(trip) === ST_REGIS.id);
 }
 
 // ---------------------------------------------------------------------------

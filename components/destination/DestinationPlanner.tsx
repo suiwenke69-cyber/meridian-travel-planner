@@ -20,7 +20,7 @@ import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { OriginSelector } from '../region/OriginSelector';
 import { BottomSheet, type SheetSnap } from '../ui/BottomSheet';
 import { ImageFrame } from '../ui/ImageFrame';
-import { IconArrowLeft, IconInfo, IconSparkle } from '../ui/icons';
+import { IconArrowLeft, IconInfo, IconRoute, IconSparkle } from '../ui/icons';
 import { Popover } from '../ui/Popover';
 import { EntityDetailCard } from './EntityDetailCard';
 import { ExplorePanel } from './panels/ExplorePanel';
@@ -283,6 +283,10 @@ export default function DestinationPlanner({ destinationId }: { destinationId: s
             <span className="hidden sm:inline">{t('import.entry')}</span>
           </button>
           <OriginSelector />
+          <Link href="/trips" className="btn-secondary btn-xs shrink-0 whitespace-nowrap" data-testid="my-trips-entry">
+            <IconRoute size={13} />
+            <span className="hidden sm:inline">{t('trips.title')}</span>
+          </Link>
           <LanguageSwitcher compact />
           {trip && (
             <span className="hidden whitespace-nowrap text-[11px] text-muted md:inline">

@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Twelve destinations including Malaysia, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis. No live data.",
+  "status": "V1 — working end to end. Twelve destinations including Malaysia, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis, and 我的行程 as a persistent first-class entity (list, detail 行程单 / 地图, fully editable). No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -70,21 +70,28 @@
   "testResults": {
     "typecheck": "tsc --noEmit clean",
     "dataValidation": "passes: 0 errors, 145 areas / 121 hotels / 526 places",
-    "coordinateAudit": "784 coordinates, 0 failures",
+    "coordinateAudit": "784 coordinates, 0 failures, 37 expected warnings",
     "socialImport": {
       "checks": 224,
       "passed": 224
     },
     "e2e": {
-      "checks": 185,
-      "passed": 185,
-      "consoleErrors": 0
+      "checks": 196,
+      "passed": 196,
+      "consoleErrors": 0,
+      "note": "the full V1 workflow plus a condensed My Trips pass"
     },
     "productionBuild": "passes; 12 destinations pre-rendered",
     "tripAccommodation": {
-      "checks": 111,
-      "passed": 111,
+      "checks": 128,
+      "passed": 128,
       "command": "npm run test:trip"
+    },
+    "myTripsAcceptance": {
+      "checks": 42,
+      "passed": 42,
+      "command": "npm run test:trips",
+      "note": "the 15-step My Trips acceptance scenario driven through the real UI at 1440x900, zero console errors"
     }
   },
   "knownLimitations": [
@@ -387,8 +394,13 @@
     "arrivalDeparture": "An airport item already present on the day becomes the start anchor on an arrival day and the end anchor on a departure day, so origin -> airport -> hotel is expressible without a second model. No live flight integration.",
     "startTime": "Trip default (defaultStartTime, 09:00) with a per-day override (day.startTime).",
     "fixedTime": "ItineraryItem.fixedTime is a BOOKING. The schedule reports usable waiting time when it arrives early and a conflict when it arrives late; it never moves the time.",
-    "migration": "Hotels stored as itinerary rows convert to stays ONLY when the same hotel repeats on two or more consecutive days. A single row is ambiguous and is preserved exactly as it was. Idempotent.",
-    "separation": "Place (canonical) / TripStay (a booking) / ItineraryItem (a visit) / DayAnchor (derived) / TransportLeg (a route) are five separate concepts and none is a copy of another."
+    "migration": "Hotels stored as itinerary rows convert to stays ONLY when the same hotel repeats on two or more consecutive days. A single row is ambiguous and is preserved exactly as it was. Idempotent. Both stay and start-time migrations are idempotent.",
+    "separation": "Place (canonical) / TripStay (a booking) / ItineraryItem (a visit) / DayAnchor (derived) / TransportLeg (a route) are five separate concepts and none is a copy of another.",
+    "identity": "A trip is a persistent entity with a stable id, a list at /trips and a detail page at /trips/detail/?id=. The planner is one of its doors, not its home. Ids are created at runtime, so the detail page uses a query parameter inside a Suspense boundary — a static export cannot prerender /trips/[id].",
+    "editable": "Trip dates and travellers; each stay's hotel and nights; each day's start time; each stop's order, day and fixed time — all edited in place on the page that reads them.",
+    "reschedule": "Days are re-derived BY DATE, not by index, so editing an end date keeps every stay, per-day start time and stop that still falls inside the new range.",
+    "duplicate": "Duplicate copies days, stops and stays with NEW stay ids — sharing ids would make the copy and the original the same accommodation object.",
+    "socialImportLink": "An import may record the trip it fed, and its saved places can be read back per trip. That is the whole relationship: no automatic itinerary merge."
   },
   "localizedArrays": "bestFor, weakFor and tags carry positionally-aligned Chinese variants. The validator checks alignment, because pickList falls back per index and a mismatch degrades into a half-Chinese line that reads as a bug.",
   "loyaltyProgrammes": {

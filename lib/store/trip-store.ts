@@ -145,6 +145,14 @@ export const useTripStore = create<TripStoreState>()(
             id: `${id}-day-${index + 1}`,
             items: day.items.map((item) => ({ ...item, id: `${item.id}-copy-${index}` })),
           })),
+          /*
+           * Stays are copied with NEW ids.
+           *
+           * Two trips that share a stay id look fine until something addresses a
+           * stay by id across the whole store — and "duplicate, then edit the
+           * copy" is exactly the flow that would then edit the original.
+           */
+          stays: (source.stays ?? []).map((stay, index) => ({ ...stay, id: `${id}-stay-${index + 1}` })),
           createdAt: now,
           updatedAt: now,
         };

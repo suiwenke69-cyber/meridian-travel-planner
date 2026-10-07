@@ -273,6 +273,33 @@ Still open:
 
 ---
 
+## V1.7 — 我的行程 / My Trips
+
+- **A trip is a persistent entity, not a mode.** It has an id, a home at `/trips`,
+  a detail page at `/trips/detail/?id=`, and it is reachable from the global
+  navigation, the region explorer and the destination planner.
+- **The list is the way back in.** Upcoming and past trips are grouped, and each
+  card shows destination, dates and nights, travellers, the accommodation and how
+  many places are actually planned — with open, edit dates, edit travellers,
+  duplicate and delete (confirmed) on the card itself.
+- **The 行程单 is a page, not a temporary state.** 行程单 | 地图 tabs over the same
+  trip; the map filters by day.
+- **Everything is editable where it is read**: trip dates and travellers, each
+  stay's hotel and nights, each day's start time, and each stop's order, day and
+  fixed time.
+- **Trip ids cannot be prerendered**, so the detail page is
+  `/trips/detail/?id=` with a Suspense boundary rather than `/trips/[id]`.
+
+Still open:
+
+- **A trip lives in one browser.** `localStorage` only; no accounts, no sharing.
+- **The Social Import link is prepared, not built.** An import can record the trip
+  it fed, and saved places can be read back per trip; nothing merges into an
+  itinerary automatically yet.
+- **No trip export.** No PDF, no calendar file, no printable 行程单.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces

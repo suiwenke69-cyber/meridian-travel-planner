@@ -129,6 +129,19 @@ second source cannot arrive by accident.
    (来自你的攻略) — never merged into the place's canonical photography. From there they add to an
    itinerary through the existing trip builder, and the existing routing handles the rest.
 
+**`/trips` — 我的行程.** The list of trips you actually have: grouped active → upcoming → past, each
+card carrying the destination, dates and nights, travellers, the accommodation in hotel order and the
+number of planned places. Open, edit dates, edit travellers, duplicate and delete (confirmed) are on
+the card. Reached from the global navigation, the region explorer and the destination planner — the
+trip is the entity, and the planner is one of its doors.
+
+**`/trips/detail/?id=…` — the 行程单.** One trip, two views: **行程单** and **地图** (which filters by
+day). Everything visible is editable in place — trip dates and travellers, each stay's hotel and
+nights, each day's start time, and each stop's order, day and fixed time. A hotel-change day shows the
+换酒店 badge and routes `hotel A → stops → hotel B`. Trip ids are created at runtime, so a static
+export cannot prerender `/trips/[id]`; the detail page takes a query parameter inside a Suspense
+boundary instead.
+
 **`/research` — the internal view.** The same pipeline, with the reviewer's controls: every mention
 with its match band in words, the alias table, saved places and pending submissions. It is labelled
 as internal and is not reachable from the traveller's four tabs.
@@ -454,7 +467,15 @@ generation → add to itinerary → reorder → move between days → day/map em
 efficiency panel → transport panel → refresh persistence → mobile layout → Chinese UI → the internal
 research view → **importing a Xiaohongshu guide with real screenshots, seeing its places plotted on
 the map, assigning pictures to them by hand, and keeping them** → the unreadable-link fallback →
-**all nine other destinations load without crashing** → zero console errors.
+**all nine other destinations load without crashing** → **我的行程: creating a trip, two
+stays, a per-day start time, an edited end date, refresh persistence, duplicate, delete with
+confirmation and the day-filtered trip map** → zero console errors.
+
+`npm run test:trips` is the acceptance scenario for 我的行程: 42 checks across all fifteen brief steps
+— create, two stays, per-day start time, three stops, remove, reorder, move to another day, the 换酒店
+day, editing a stay, changing the end date, refresh persistence, the list card, duplicate, delete with
+confirmation and the day-filtered map — driven entirely through the real UI at 1440×900 with zero
+console errors.
 
 `npm run test:social` is the behavioural suite for guide import: 224 checks over Chinese, English and
 mixed prose, duplicate and partial names, alias learning, the resolution pipeline and its cache, the

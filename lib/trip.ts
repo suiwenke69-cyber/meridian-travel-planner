@@ -74,13 +74,23 @@ export function rescheduleTrip(
   arrivalDate: string,
   departureDate: string,
 ): { days: TripDay[]; droppedItems: ItineraryItem[] } {
+  /*
+   * Carry the day's own settings across a date change.
+   *
+   * The first version matched by INDEX, which loses a start time the moment a
+   * trip gains a day at the front — and dropped `startTime` entirely, so a
+   * traveller who set 08:30 for a day silently lost it by editing the trip
+   * dates. Both are the same mistake: treating a per-date setting as positional.
+   */
+  const previousByDate = new Map(trip.days.map((day) => [day.date, day]));
   const next = generateDays(arrivalDate, departureDate).map((day, index) => {
-    const existing = trip.days[index];
+    const existing = previousByDate.get(day.date) ?? trip.days[index];
     return {
       ...day,
       id: existing?.id ?? `${trip.id}-${day.id}`,
       items: existing?.items ?? [],
       note: existing?.note,
+      startTime: existing?.startTime,
     };
   });
   const droppedItems = trip.days.slice(next.length).flatMap((day) => day.items);

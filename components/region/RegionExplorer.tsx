@@ -19,6 +19,7 @@ import { EmptyState } from '../ui/primitives';
 import { IconArrowRight, IconInfo, IconSearch } from '../ui/icons';
 import { Popover } from '../ui/Popover';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
+import { IconRoute } from '../ui/icons';
 import { DestinationPreviewCard } from './DestinationPreviewCard';
 import { useIsDesktop } from '@/lib/hooks';
 import type { MessageKey } from '@/lib/i18n';
@@ -246,6 +247,14 @@ function TopBar() {
         <span className="hidden sm:block">
           <OriginSelector />
         </span>
+        {/*
+          我的行程 is global, not a destination-page tab: a traveller with two
+          trips needs to reach them without remembering which island each one is.
+        */}
+        <Link href="/trips" className="btn-secondary btn-xs shrink-0 whitespace-nowrap" data-testid="my-trips-entry">
+          <IconRoute size={13} />
+          <span className="hidden sm:inline">{t('trips.title')}</span>
+        </Link>
         <LanguageSwitcher compact />
         {/*
           Data provenance lives behind a small affordance rather than in the

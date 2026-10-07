@@ -139,6 +139,14 @@ export interface ResearchStoreState {
   processImport: (id: string) => Promise<ProcessImportResult>;
   deleteImport: (id: string) => Promise<void>;
   updateImport: (id: string, patch: Partial<XiaohongshuImport>) => void;
+  /**
+   * Attaches an import to a trip, or detaches it with null.
+   *
+   * The relationship the brief asked to prepare, and nothing more: it is what
+   * lets "the places from this guide" and "the trip I am building" be the same
+   * object later, without the import flow knowing anything about itineraries.
+   */
+  setImportTrip: (importId: string, tripId: string | null) => void;
 
   // --- images -------------------------------------------------------------
   /** Stores the files and attaches them to the import. Returns the new records. */
@@ -601,6 +609,11 @@ export const useResearchStore = create<ResearchStoreState>()(
 
       updateImport: (id, patch) =>
         set((state) => ({ imports: state.imports.map((i) => (i.id === id ? { ...i, ...patch } : i)) })),
+
+      setImportTrip: (importId, tripId) =>
+        set((state) => ({
+          imports: state.imports.map((i) => (i.id === importId ? { ...i, tripId: tripId ?? undefined } : i)),
+        })),
 
       /**
        * Deleting an import deletes everything it held (§26).
@@ -1132,6 +1145,28 @@ export function useImport(id: string | null) {
       images: record ? images.filter((image) => image.importId === record.id).sort((a, b) => a.originalIndex - b.originalIndex) : [],
     };
   }, [imports, candidates, images, id]);
+}
+
+/** Imports gathered for one trip. The reverse of `SocialImport.tripId`. */
+export function useImportsForTrip(tripId: string | null): XiaohongshuImport[] {
+  const imports = useResearchStore((s) => s.imports);
+  return useMemo(
+    () => (tripId ? imports.filter((entry) => entry.tripId === tripId) : []),
+    [imports, tripId],
+  );
+}
+
+/** Saved places that came from an import belonging to this trip. */
+export function useSavedPlacesForTrip(tripId: string | null, destinationId: string): UserSavedPlace[] {
+  const saved = useResearchStore((s) => s.savedPlaces);
+  const scoped = useImportsForTrip(tripId);
+  return useMemo(() => {
+    if (!tripId || scoped.length === 0) return [];
+    const importIds = new Set(scoped.map((entry) => entry.id));
+    return saved.filter(
+      (place) => place.destinationId === destinationId && place.sourceImportId && importIds.has(place.sourceImportId),
+    );
+  }, [saved, scoped, tripId, destinationId]);
 }
 
 export function useSavedPlaces(destinationId?: string): UserSavedPlace[] {

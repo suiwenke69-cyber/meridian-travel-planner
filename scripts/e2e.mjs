@@ -1430,6 +1430,146 @@ await step('28. The selected origin survives a refresh, and Bali still works', a
 });
 
 // ---------------------------------------------------------------------------
+// My Trips — a condensed run of the acceptance scenario. The exhaustive
+// version lives in scripts/e2e-trips.mjs; this covers the same spine so the
+// full suite never ships a broken trip page.
+// ---------------------------------------------------------------------------
+{
+  console.log('\n── 我的行程 / My Trips ──');
+  const savedTrips = await page.evaluate(() => window.localStorage.getItem('meridian.trips.v1'));
+
+  await page.goto(`${BASE}/trips`, { waitUntil: 'domcontentloaded', timeout: 240_000 });
+  await page.waitForSelector('[data-testid="trips-page"]', { timeout: 120_000 });
+  const snapshot = await page.evaluate(() => window.localStorage.getItem('meridian.trips.v1'));
+  await page.evaluate(() => window.localStorage.removeItem('meridian.trips.v1'));
+
+  // Create a Bali trip Oct 10–14 through the planner.
+  await page.goto(`${BASE}/destination/bali`, { waitUntil: 'domcontentloaded', timeout: 240_000 });
+  await page.waitForSelector('.maplibregl-canvas', { timeout: 120_000 });
+  await page.waitForTimeout(6000);
+  await page.locator('[data-testid="dest-tab-plan"]').click();
+  await page.waitForSelector('[data-testid="arrival-date"]', { timeout: 20_000 });
+  await page.locator('[data-testid="arrival-date"]').fill('2026-10-10');
+  await page.locator('[data-testid="departure-date"]').fill('2026-10-14');
+  await page.locator('[data-testid="create-trip"]').click();
+  await page.waitForSelector('[data-testid="day-tab-5"]', { timeout: 20_000 });
+  const tripId = await page.evaluate(() => JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state?.activeTripId);
+  const dayCount = await page.locator('[data-testid^="day-tab-"]').count();
+  check('my trips: a trip can be created with five days', Boolean(tripId) && dayCount === 5, `${tripId} / ${dayCount}`);
+
+  // Accommodation, on the trip's own page.
+  const detail = `${BASE}/trips/detail/?id=${encodeURIComponent(tripId)}`;
+  await page.goto(detail, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="trip-detail-page"]', { timeout: 30_000 });
+  await page.waitForTimeout(1200);
+  const addStay = async (hotelId, checkIn, checkOut) => {
+    await page.locator('[data-testid="trip-stay-add"]').click();
+    await page.waitForSelector('[data-testid="trip-stay-add-form"]', { timeout: 10_000 });
+    await page.locator('[data-testid="trip-stay-add-hotel"]').selectOption(hotelId);
+    await page.locator('[data-testid="trip-stay-add-checkin"]').fill(checkIn);
+    await page.locator('[data-testid="trip-stay-add-checkout"]').fill(checkOut);
+    await page.locator('[data-testid="trip-stay-add-submit"]').click();
+    await page.waitForTimeout(900);
+  };
+  await addStay('w-bali-seminyak', '2026-10-10', '2026-10-12');
+  await addStay('the-st-regis-bali-resort', '2026-10-12', '2026-10-14');
+  const stays = await page.locator('[data-testid="trip-stay-list"] > li').count();
+  check('my trips: two hotel stays are listed', stays === 2, `${stays}`);
+  check('my trips: the trip has no unbooked night', (await page.locator('[data-testid="trip-unbooked"]').count()) === 0);
+  const changeDays = await page.locator('[data-testid^="trip-hotel-change-"]').count();
+  check('my trips: exactly one day is marked 换酒店', changeDays === 1, `${changeDays}`);
+
+  // Per-day start time.
+  const dayIds = await page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+    return raw.trips.find((entry) => entry.id === raw.activeTripId).days.map((day) => day.id);
+  });
+  await page.locator(`[data-testid="trip-day-start-${dayIds[1]}"]`).fill('08:30');
+  await page.waitForTimeout(700);
+  const storedStart = await page.evaluate(
+    ([id]) => {
+      const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+      return raw.trips.find((entry) => entry.id === raw.activeTripId).days.find((day) => day.id === id)?.startTime;
+    },
+    [dayIds[1]],
+  );
+  check('my trips: a day keeps its own start time', storedStart === '08:30', String(storedStart));
+
+  // Dates are editable in place.
+  await page.locator('[data-testid="trip-settings-toggle"]').click();
+  await page.waitForSelector('[data-testid="trip-settings-departure"]', { timeout: 10_000 });
+  await page.locator('[data-testid="trip-settings-departure"]').fill('2026-10-16');
+  await page.locator('[data-testid="trip-settings-save"]').click();
+  await page.waitForTimeout(1500);
+  const afterDates = await page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+    const trip = raw.trips.find((entry) => entry.id === raw.activeTripId);
+    return { departure: trip.departureDate, dayCount: trip.days.length, stays: trip.stays.length };
+  });
+  check('my trips: editing the end date reshapes the trip', afterDates.departure === '2026-10-16' && afterDates.dayCount === 7, JSON.stringify(afterDates));
+  check('my trips: rescheduling keeps the accommodation', afterDates.stays === 2, String(afterDates.stays));
+
+  // Persistence.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="trip-days"]', { timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  const kept = await page.evaluate(
+    ([id]) => {
+      const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+      const trip = raw.trips.find((entry) => entry.id === id);
+      return { departure: trip.departureDate, stays: trip.stays.length, day2Start: trip.days[1]?.startTime };
+    },
+    [tripId],
+  );
+  check('my trips: the trip survives a refresh', kept.departure === '2026-10-16' && kept.stays === 2 && kept.day2Start === '08:30', JSON.stringify(kept));
+
+  // List page, grouping, duplicate and delete-with-confirmation.
+  await page.goto(`${BASE}/trips`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(`[data-testid="trip-card-${tripId}"]`, { timeout: 30_000 });
+  check('my trips: the list groups it as upcoming', (await page.locator('[data-testid="trips-group-upcoming"]').count()) === 1);
+  await page.locator(`[data-testid="trip-duplicate-${tripId}"]`).click();
+  await page.waitForTimeout(1400);
+  const copyIds = await page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+    return raw.trips.map((trip) => trip.id);
+  });
+  check('my trips: duplicating makes a second trip', copyIds.length === 2, JSON.stringify(copyIds));
+  const copyId = copyIds.find((id) => id !== tripId);
+  await page.locator(`[data-testid="trip-delete-${copyId}"]`).click();
+  await page.waitForSelector(`[data-testid="trip-delete-confirm-${copyId}"]`, { timeout: 10_000 });
+  check('my trips: deleting asks for confirmation', (await page.locator(`[data-testid="trip-delete-confirm-${copyId}"]`).count()) === 1);
+  await page.locator(`[data-testid="trip-delete-yes-${copyId}"]`).click();
+  await page.waitForTimeout(1200);
+  const remaining = await page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('meridian.trips.v1') ?? '{}').state;
+    return raw.trips.map((trip) => trip.id);
+  });
+  check('my trips: only the original trip is left', remaining.length === 1 && remaining[0] === tripId, JSON.stringify(remaining));
+
+  // Map view with a day filter.
+  await page.goto(detail, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="trip-view-map"]', { timeout: 30_000 });
+  await page.locator('[data-testid="trip-view-map"]').click();
+  await page.waitForSelector('[data-testid="trip-map"]', { timeout: 30_000 });
+  await page.waitForTimeout(6000);
+  const tripMarkers = await page.locator('.maplibregl-marker').count();
+  check('my trips: the map view draws the trip', tripMarkers >= 1, `${tripMarkers} markers`);
+  await page.locator(`[data-testid="trip-day-filter-${dayIds[1]}"]`).click();
+  await page.waitForTimeout(2500);
+  check(
+    'my trips: the day filter selects a day',
+    (await page.locator(`[data-testid="trip-day-filter-${dayIds[1]}"]`).getAttribute('aria-pressed')) === 'true',
+  );
+  await page.screenshot({ path: join(ARTIFACTS, '35-my-trips.png') });
+
+  // Leave the storage as we found it.
+  await page.evaluate((value) => {
+    if (value === null) window.localStorage.removeItem('meridian.trips.v1');
+    else window.localStorage.setItem('meridian.trips.v1', value);
+  }, savedTrips ?? snapshot);
+}
+
+// ---------------------------------------------------------------------------
 
 writeFileSync(
   join(ARTIFACTS, 'report.json'),
