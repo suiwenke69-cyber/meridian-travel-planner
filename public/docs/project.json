@@ -1,7 +1,7 @@
 {
   "name": "Meridian",
   "tagline": "Map-first Southeast Asia travel planner for travellers departing from Singapore",
-  "status": "V1 — working end to end. Twelve destinations including Malaysia, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis, and 我的行程 as a persistent first-class entity (list, detail 行程单 / 地图, fully editable). No live data.",
+  "status": "V1 — working end to end. Twelve destinations including Malaysia, five loyalty programmes, Xiaohongshu-only guide import with text + image analysis, 我的行程 as a persistent first-class entity, and photography for two destinations (Bali, Phu Quoc). No live data.",
   "productThesis": "An interactive geographic decision-making tool that helps Singapore-based travellers decide where to go, where to stay, what to do, and how to arrange those places into an efficient trip. The map is the product; the itinerary is built around the map.",
   "repository": {
     "runtimeDependencies": [
@@ -98,6 +98,18 @@
       "passed": 28,
       "command": "node scripts/check-plan-space.mjs",
       "note": "builds the 3-hotel/4-day trip through the UI and measures the panel at 1440x900"
+    },
+    "imageManifests": {
+      "checks": 110,
+      "passed": 110,
+      "command": "npm run test:images",
+      "note": "files on disk, attribution, one hero per subject, no orphans, no non-commercial licences, no key shared by two destinations"
+    },
+    "imageRendering": {
+      "checks": 10,
+      "passed": 10,
+      "command": "npm run check:images-ui -- --destination phu-quoc",
+      "note": "real browser; also run against bali after the merge, 10/10"
     }
   },
   "knownLimitations": [
@@ -129,9 +141,25 @@
     "areas": "six headline regions with authored taglines, drawn as native two-line map labels"
   },
   "imagery": {
-    "provider": "wikimedia-commons",
-    "architecture": "lib/images — components request by (entityKind, entityId), never construct a URL",
-    "images": 80,
+    "provider": "Wikimedia Commons + Openverse",
+    "architecture": "lib/images — components request by (entityKind, entityId) and never construct a URL; lib/data/images merges one manifest per destination",
+    "images": 188,
+    "perDestination": {
+      "bali": {
+        "images": 134,
+        "subjects": 60,
+        "areas": "15/15",
+        "hotels": "4/38",
+        "places": "41/144"
+      },
+      "phu-quoc": {
+        "images": 54,
+        "subjects": 27,
+        "areas": "7/13",
+        "hotels": "2/7",
+        "places": "18/37"
+      }
+    },
     "fields": [
       "url",
       "alt",
@@ -142,10 +170,17 @@
       "source.author",
       "source.pageUrl"
     ],
-    "honestyMechanism": "subject: subject|area|category — a hotel showing its beach is disclosed as an area photo",
-    "hotelsWithOwnPhotos": 3,
-    "hotelsBorrowingAreaPhoto": 17,
-    "regenerate": "npm run images:resolve && npm run images:download"
+    "honestyMechanism": "A property only has images verified to be THAT property, by Commons category membership or by its name plus a locality word in the file title. A property with nothing verified says 暂无该酒店实拍照片 and never borrows its area's photograph. Licences are limited to those permitting commercial use.",
+    "verificationGates": [
+      "REQUIRE_LOCALITY — a per-destination regex every candidate must satisfy",
+      "SUBJECT_RULES — per-subject mustMatch naming the subject, plus rejects",
+      "HOTEL_TITLE_RULES — the file must name the property AND somewhere on the island",
+      "HOTEL_TITLE_REJECT — names that belong to another city or another property",
+      "ownName — opt-out of the locality gate, only where the name is unique to the destination"
+    ],
+    "pipeline": "scripts/fetch-destination-images.mjs --destination <id>, subjects in scripts/images/subjects/<id>.mjs",
+    "regenerate": "npm run images:resolve -- --destination <id> && npm run images:download -- --destination <id>",
+    "notVerified": "No human has looked at these photographs — the pass that added them ran on a model with no image input, so DEPICTS_OVERRIDE is empty and every choice is title-and-category verified."
   },
   "transport": {
     "abstraction": "TransportLeg with mode, rationale, alternatives, distance, duration, geometry, source, confidence, multimodal",

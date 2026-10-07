@@ -367,23 +367,32 @@ card. A planner that quietly blends surveyed and estimated positions is worse th
 
 ### Coverage today
 
-| Destination | Status | Areas | Marriott | Hilton | Places |
-| --- | --- | --- | --- | --- | --- |
-| Bali | reference | 15 | 16 | 5 | 48 |
-| Phu Quoc | starter | 4 | 2 | 1 | 8 |
-| Da Nang / Hoi An | starter | 4 | 2 | 2 | 8 |
-| Ho Chi Minh City | starter | 4 | 3 | 1 | 8 |
-| Hanoi | starter | 4 | 2 | 2 | 8 |
-| Siem Reap | starter | 3 | 1 | 1 | 8 |
-| Phnom Penh | starter | 3 | 1 | 0 | 8 |
-| Cebu | starter | 4 | 2 | 0 | 8 |
-| Boracay | starter | 3 | 1 | 0 | 7 |
-| Palawan | starter | 4 | 1 | 0 | 8 |
+| Destination | Status | Areas | Marriott | Hilton | IHG | Hyatt | GHA | Places | Images |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Bali | reference | 15 | 16 | 5 | 7 | 6 | 4 | 144 | 134 |
+| Phu Quoc | reference | 13 | 2 | 1 | 3 | 1 | 0 | 37 | 54 |
+| Da Nang & Hoi An | reference | 14 | 4 | 4 | 3 | 1 | 1 | 38 | — |
+| Ho Chi Minh City | reference | 12 | 5 | 1 | 4 | 1 | 0 | 39 | — |
+| Hanoi | reference | 13 | 3 | 3 | 2 | 1 | 2 | 39 | — |
+| Siem Reap | reference | 10 | 1 | 1 | 0 | 1 | 2 | 34 | — |
+| Phnom Penh | reference | 11 | 2 | 0 | 1 | 1 | 1 | 32 | — |
+| Cebu | reference | 11 | 3 | 0 | 1 | 0 | 1 | 32 | — |
+| Boracay | reference | 7 | 1 | 0 | 0 | 0 | 0 | 21 | — |
+| Palawan | reference | 11 | 1 | 0 | 0 | 0 | 0 | 30 | — |
+| Penang | reference | 14 | 3 | 2 | 1 | 0 | 4 | 40 | — |
+| Kuala Lumpur | reference | 14 | 4 | 3 | 3 | 2 | 2 | 40 | — |
 
-**48 areas · 43 loyalty hotels · 119 places · 5 of 119 places marked approximate.**
-A zero in the loyalty column is a real finding, not a gap: neither Marriott Bonvoy nor Hilton
-Honors has a property we could verify in Phnom Penh, Cebu, Boracay or Palawan. The UI says so rather
-than padding the list.
+**145 areas · 121 loyalty hotels across five programmes · 526 places · 188 photographs in two
+destinations.** A zero in a loyalty column is a real finding, not a gap: no IHG property we could
+verify in Siem Reap, Cebu or Boracay, no Hyatt in Boracay or Palawan, and GHA DISCOVERY — an
+alliance rather than a brand — has nothing in Phu Quoc, Ho Chi Minh City, Cebu, Boracay or Palawan.
+The UI says so rather than padding the list.
+
+Photography is per destination and by no means complete: **Bali has 134 images across 60 subjects,
+Phu Quoc 54 across 27**, and the other ten destinations have none yet. The pipeline is
+destination-agnostic — `npm run images:resolve -- --destination <id>` — so adding one is authoring
+its subject file, not writing a script. Which photographs are allowed to represent which subject is
+a gate in that file, and `npm run test:images` enforces everything a machine can check.
 
 ### Adding a destination
 
@@ -495,6 +504,14 @@ them.
 `scripts/shots-xhs.mjs` drives the same flow in a real browser at desktop and mobile widths and
 writes screenshots to `test-artifacts/xhs/`.
 
+`npm run test:images` is the manifest-integrity suite for photography: 110 checks asserting that
+every manifest entry has a file on disk over 4KB, a licence, an author and an alt text, exactly one
+hero per subject and it is first, no orphan files, no non-commercial licence, every subject a real
+entity in the dataset, and no `kind:id` key claimed by two destinations — which would be one
+destination's card showing another's photograph. `npm run check:images-ui -- --destination <id>`
+drives a real browser and counts the photographs that actually load, scroll by scroll, because the
+cards lazy-load.
+
 `npm run validate:data` runs the data-integrity checks (schema, coordinate bounds, duplicate ids,
 NaN radii, brand-registry coverage, unknown area references, and a "no price in a description"
 assertion) and prints a coverage table. Every check in it exists because the corresponding failure
@@ -523,11 +540,13 @@ hard timeout so one hung action cannot swallow the run.
 7. **No clustering of the *trip* itself** — a 21-day trip with 60 stops is legal and will render.
 8. **Single user, single trip at a time** in the planner's active view (multiple trips are stored
    and switchable, but there is no comparison view).
-9. **Photography is thin, and honest about it.** 141 images across 63 subjects, restricted to
-   commercial-use licences and fully attributed. A hotel photo is used only if it is provably of
-   that property; **4 of 20 Bali hotels clear that bar** and the other sixteen say "No property
-   photography available" rather than borrowing their area's beach photograph. This is a genuine
-   Commons and Openverse coverage limit — fixing it needs licensed photography.
+9. **Photography is thin, and honest about it.** 188 images across 87 subjects in two
+   destinations, restricted to commercial-use licences and fully attributed. A hotel photo is used
+   only if it is provably of that property; **4 of Bali's 38 hotels and 2 of Phu Quoc's 7 clear that
+   bar**, and the rest say 暂无该酒店实拍照片 rather than borrowing their area's beach photograph.
+   This is a genuine Commons and Openverse coverage limit — fixing it needs licensed photography.
+   **No human has looked at the Phu Quoc photographs**, so their verification is filename and
+   Commons category only.
 10. **The public OSRM demo server** is rate-limited and not for production.
 11. **Guide import reads text, not images.** The extractor handles prose the traveller pastes. It
     cannot read a screenshot, which is how most Xiaohongshu guides actually arrive, and it does not

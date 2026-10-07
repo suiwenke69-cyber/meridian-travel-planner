@@ -1,5 +1,5 @@
 import type { ImageProviderId, ImageRole, PlaceImage } from '../types';
-import { BALI_IMAGES } from '../data/images/bali-images';
+import { ALL_IMAGES, IMAGES_BY_DESTINATION } from '../data/images';
 
 /**
  * Image resolution is a provider concern, not a component concern.
@@ -21,15 +21,16 @@ export interface ImageProvider {
 }
 
 /**
- * The shipped provider: a manifest generated from Wikimedia Commons at build
- * time by `scripts/fetch-bali-images.mjs`. No runtime network call, and the
- * whole set is reproducible.
+ * The shipped provider: manifests generated from Wikimedia Commons and Openverse
+ * at build time by `scripts/fetch-destination-images.mjs`. No runtime network
+ * call, and every set is reproducible: subjects and verification rules live in
+ * `scripts/images/subjects/<destination>.mjs`.
  */
 export const manifestImageProvider: ImageProvider = {
   id: 'wikimedia-commons',
   label: 'Wikimedia Commons & Openverse',
   resolve(kind, id) {
-    return BALI_IMAGES[`${kind}:${id}`] ?? [];
+    return ALL_IMAGES[`${kind}:${id}`] ?? [];
   },
 };
 
@@ -110,4 +111,4 @@ export function providerLabel(provider: string): string {
   return PROVIDER_LABEL[provider] ?? provider;
 }
 
-export { BALI_IMAGES };
+export { ALL_IMAGES, IMAGES_BY_DESTINATION };

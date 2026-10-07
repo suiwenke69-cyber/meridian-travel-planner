@@ -305,6 +305,34 @@ Still open:
 
 ---
 
+## V1.8 — photography beyond Bali
+
+- **The image pipeline is destination-agnostic.** `scripts/fetch-destination-images.mjs
+  --destination <id>` reads subjects from `scripts/images/subjects/<id>.mjs`;
+  `lib/data/images` merges one manifest per destination and the provider resolves
+  from the merge.
+- **Phu Quoc has 54 images** across 27 subjects — 7 of 13 areas, 18 of 37 places,
+  2 of 7 hotels — up from zero.
+- **Gates that survive a second language.** A destination-level locality
+  requirement, a per-subject name gate, and a per-property title rule, because
+  Vietnamese names contain ordinary words: "Bãi Thơm" is also a commune office in
+  Thái Bình and "Vũng Bầu" is also a 1946 government document.
+- **A property with nothing verified says so** rather than borrowing its area's
+  photograph.
+
+Still open:
+
+- **Ten destinations have no photography.** The pipeline supports them; each needs
+  its subjects and its gates authored, and the yield will be as thin as Phu Quoc's
+  independent hotels.
+- **No human has looked at the Phu Quoc images.** Verification is filename and
+  Commons category only; `DEPICTS_OVERRIDE` — where a by-eye correction goes — is
+  empty.
+- **No image is served from a CDN or resized per breakpoint.** Files are 1100px
+  JPEGs copied into the static export; Phu Quoc adds 12MB.
+
+---
+
 ## V2 — live data, accounts, and planning intelligence
 
 ### Live data behind the existing interfaces

@@ -21,7 +21,7 @@ import {
   getAreas,
   destinationStats,
 } from '../lib/data/index';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { HOTEL_BRANDS, HOTEL_GROUPS } from '../lib/data/hotel-brands';
 import {
   ACTIVITY_KINDS,
@@ -277,43 +277,64 @@ for (const destination of DESTINATIONS) {
  * on disk. Nothing caught it, because the manifest is keyed by strings and a
  * string that matches nothing looks exactly like an entity with no photography.
  */
-const imageManifestSource = readFileSync(new URL('../lib/data/images/bali-images.ts', import.meta.url), 'utf8');
-const manifestKeys = [...imageManifestSource.matchAll(/^  '([a-z]+):([a-z0-9-]+)':/gm)].map((m) => ({
-  kind: m[1],
-  id: m[2],
-}));
+/*
+ * Every destination, not just Bali. The manifests are generated from an external
+ * source, so a key that does not resolve to an entity — a renamed place, a typo
+ * in a subject id — produces a photograph that exists on disk and can never be
+ * shown, which looks exactly like an entity that has no photograph.
+ */
+const imageDirectory = new URL('../lib/data/images/', import.meta.url);
+const subjectDirectory = new URL('./images/subjects/', import.meta.url);
 
-const known = {
-  area: new Set(getAreas('bali').map((a) => a.id)),
-  hotel: new Set(getAllHotels().filter((h) => h.destinationId === 'bali').map((h) => h.id)),
-  place: new Set(getAllPlaces().filter((p) => p.destinationId === 'bali').map((p) => p.id)),
-};
-for (const { kind, id } of manifestKeys) {
-  if (!known[kind as keyof typeof known]) {
-    err(`image manifest: unknown entity kind "${kind}"`);
+const manifestFiles = readdirSync(imageDirectory).filter((name) => name.endsWith('-images.ts'));
+if (manifestFiles.length === 0) err('image manifests: none found in lib/data/images');
+
+for (const file of manifestFiles) {
+  const destinationId = file.replace(/-images\.ts$/, '');
+  const source = readFileSync(new URL(file, imageDirectory), 'utf8');
+  const keys = [...source.matchAll(/^  '([a-z]+):([a-z0-9-]+)':/gm)].map((match) => ({
+    kind: match[1],
+    id: match[2],
+  }));
+
+  const known: Record<string, Set<string>> = {
+    area: new Set(getAreas(destinationId).map((a) => a.id)),
+    hotel: new Set(getAllHotels().filter((h) => h.destinationId === destinationId).map((h) => h.id)),
+    place: new Set(getAllPlaces().filter((p) => p.destinationId === destinationId).map((p) => p.id)),
+  };
+
+  for (const { kind, id } of keys) {
+    if (!known[kind]) {
+      err(`image manifest (${destinationId}): unknown entity kind "${kind}"`);
+      continue;
+    }
+    if (!known[kind].has(id)) {
+      err(
+        `image manifest (${destinationId}): "${kind}:${id}" is not in the dataset — its photographs can never be shown. ` +
+          `Fix scripts/images/subjects/${destinationId}.mjs and regenerate.`,
+      );
+    }
+  }
+
+  // The subject list is the input to the generator, so it is held to the same rule.
+  const subjectsPath = new URL(`${destinationId}.mjs`, subjectDirectory);
+  let subjects: string;
+  try {
+    subjects = readFileSync(subjectsPath, 'utf8');
+  } catch {
+    err(`image subjects: no subject file for the "${destinationId}" manifest`);
     continue;
   }
-  if (!known[kind as keyof typeof known].has(id)) {
-    err(
-      `image manifest: "${kind}:${id}" is not in the dataset — its photographs can never be shown. ` +
-        `Fix scripts/fetch-bali-images.mjs and regenerate.`,
-    );
-  }
-}
+  const block = (from: string, to: string) => subjects.slice(subjects.indexOf(from), subjects.indexOf(to));
+  const listIds = (text: string) => [...text.matchAll(/^  \['([a-z0-9-]+)',/gm)].map((m) => m[1]);
 
-/*
- * --- 6. the generator's id list must agree with the dataset ----------------
- */
-const generatorSource = readFileSync(new URL('./fetch-bali-images.mjs', import.meta.url), 'utf8');
-const areaBlock = generatorSource.slice(generatorSource.indexOf('const AREAS = ['), generatorSource.indexOf('const PLACES = ['));
-const placeBlock = generatorSource.slice(generatorSource.indexOf('const PLACES = ['), generatorSource.indexOf('const BLACKLIST'));
-const listIds = (block: string) => [...block.matchAll(/^  \['([a-z0-9-]+)',/gm)].map((m) => m[1]);
+  const hotelIds = listIds(block('export const HOTELS = [', 'export const AREAS = ['));
+  const areaIds = listIds(block('export const AREAS = [', 'export const PLACES = ['));
+  const placeIds = listIds(block('export const PLACES = [', 'export const SUBJECT_RULES'));
 
-for (const id of listIds(areaBlock)) {
-  if (!known.area.has(id)) err(`fetch-bali-images AREAS: "${id}" is not an area in the dataset`);
-}
-for (const id of listIds(placeBlock)) {
-  if (!known.place.has(id)) err(`fetch-bali-images PLACES: "${id}" is not a place in the dataset`);
+  for (const id of hotelIds) if (!known.hotel.has(id)) err(`${destinationId} subjects HOTELS: "${id}" is not a hotel in the dataset`);
+  for (const id of areaIds) if (!known.area.has(id)) err(`${destinationId} subjects AREAS: "${id}" is not an area in the dataset`);
+  for (const id of placeIds) if (!known.place.has(id)) err(`${destinationId} subjects PLACES: "${id}" is not a place in the dataset`);
 }
 
 /*

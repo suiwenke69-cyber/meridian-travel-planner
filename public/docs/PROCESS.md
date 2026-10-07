@@ -1918,3 +1918,118 @@ remembers the editor was left open.
 4. **A duplicate is a full copy.** There is no "reuse this trip's hotels for new
    dates" operation beyond duplicating and editing the copy's dates.
 5. **The list does not show cost, flights or bookings** — none of which exist.
+
+---
+
+# Iteration 12 — Phu Quoc gets photography, and the pipeline becomes a pipeline
+
+Photography existed for exactly one destination, and the code said so out loud:
+`lib/images/index.ts` imported `BALI_IMAGES` and returned nothing for everything
+else. Phu Quoc — 13 areas, 7 hotels, 37 places — had no image anywhere in the
+product. This pass gave it 54, and in doing so turned a Bali script into a
+destination-agnostic pipeline that the other ten destinations can now use.
+
+## 1. The pipeline, not a second script
+
+`scripts/fetch-bali-images.mjs` became `scripts/fetch-destination-images.mjs`, and
+the Bali subject lists were extracted verbatim into
+`scripts/images/subjects/bali.mjs`. "Verbatim" is checked, not asserted: the
+extraction was diffed list by list against the original file, so
+`--destination bali` reproduces the manifest that shipped. `--destination
+phu-quoc` uses `scripts/images/subjects/phu-quoc.mjs`, which is data — 7 hotels,
+13 areas, 37 places with queries, name gates and locality rules.
+
+`npm run images:resolve -- --destination phu-quoc` and its `--download` twin are
+the whole interface. `lib/data/images/index.ts` merges one manifest per
+destination, and the provider resolves from the merge.
+
+## 2. Three real bugs the second destination exposed
+
+**Hyphenated titles were silently dropped.** Commons writes "Bãi Khem" as
+`Bai-Khem` and the JW Marriott as `Jw-marriott-phu-quoc-bai-kem.jpg`. The matcher
+compared a human search phrase against the raw title, so the JW Marriott's own
+photograph — already in the results — failed the "does this file name the
+property" test. Titles are now normalised (`-`/`_` → space) before every gate.
+This affected Bali too; it just had enough photographs that nobody noticed.
+
+**Commons candidates had no destination gate.** Openverse candidates were checked
+against a Bali locality regex; Commons candidates were not. For Bali that was
+survivable — "Uluwatu" is not a word in anyone else's address. For Vietnamese
+names it was not: "Bãi Thơm" resolved to a commune office in Thái Bình, "Vũng
+Bầu" to three 1946 government documents and a coal mine in Poland, "Ông Lăng" to
+a temple statue in the Mekong Delta. Every gate now sits behind a per-destination
+`REQUIRE_LOCALITY`, which the pipeline already had the concept of.
+
+**A name is not a location.** The fixes above still let through subjects whose
+own name collides: a night market, a pearl farm, a fish-sauce works, a temple.
+Every Phu Quoc subject now carries a `mustMatch` naming the subject itself, and a
+beach or a nature subject additionally rejects titles naming a resort — a
+photograph of the JW Marriott at Bãi Khem is real, licensed, and not a photograph
+of Bãi Khem.
+
+One exemption was tried and withdrawn. "Cổng miếu Gia Long" is the only Commons
+file matching Gia Long's temple, and its name is specific enough that an
+`ownName` exemption seemed reasonable. The Commons **category** check then showed
+it is in `Dong Thap` — a thousand kilometres away, in the Delta. The exemption is
+gone, the subject has no image, and the card says so. That is the pipeline
+working: a wrong photograph is worse than no photograph.
+
+## 3. What Phu Quoc has now
+
+| | subjects with photography | images |
+| --- | --- | --- |
+| Areas | 7 / 13 | 21 |
+| Hotels | 2 / 7 | 2 |
+| Places | 18 / 37 | 31 |
+| **Total** | **27** | **54** |
+
+- **Areas**: Dương Đông, Long Beach / Bãi Trường, An Thoi & the south, Dương Tơ,
+  Bãi Sao, Hàm Ninh, the An Thoi archipelago.
+- **Places**: Sào and Khem beaches, the national park's Suối Tranh, VinWonders,
+  Vinpearl Safari, Grand World, Aquatopia, the Hòn Thơm cable car, Phu Quoc
+  Prison, Dinh Cậu, Sùng Hưng and Trúc Lâm Hộ Quốc pagodas, both markets, the
+  night market, Bãi Vòng and An Thoi ports, and one restaurant.
+- **Hotels**: JW Marriott Emerald Bay and InterContinental Long Beach. The other
+  five have nothing verifiable, and their cards say 暂无该酒店实拍照片 rather than
+  showing a beach that is not the hotel.
+- Refused for cause: Gia Long's temple (the file is in Đồng Tháp), Khải Hoàn fish
+  sauce (only generic fish-sauce-factory photographs), Ngọc Hà pepper farm (a
+  pepper farm in Vietnam, not that farm), Ngọc Hiền pearl farm (a pearl shop in
+  Phu Quoc, not the farm), and the restaurants and bars nobody has photographed.
+
+## 4. What was NOT verified
+
+**Nobody has looked at these photographs.** The model that ran this pass has no
+image input, so verification is filename-based plus the Commons category check
+described above, and `DEPICTS_OVERRIDE` — the per-file list of "this is actually
+a pool, not the signage" corrections that the Bali pass filled in by eye — is
+empty. The two hotel photographs are the weakest entries: the InterContinental
+one is title-verified only, and the JW Marriott file carries no Commons category
+at all. A human pass over `public/images/phu-quoc/` is the outstanding work, and
+`DEPICTS_OVERRIDE` is where its findings go.
+
+## 5. Verification
+
+- `npm run test:images` — **110/110**. Every manifest entry has a file on disk
+  over 4KB, a licence, an author and an alt text; exactly one hero per subject and
+  it is first; no orphan files; no non-commercial licence; every subject is a real
+  entity in the dataset; and no `kind:id` key is claimed by two destinations —
+  which would be one destination's card showing another's photograph.
+- `npm run check:images-ui -- --destination phu-quoc` — **10/10** in a real
+  browser: 4 area images on the stay scope, 3 on the day-trip scope, 2 property
+  photographs with 5 of 7 hotels stating their absence, 16 place images, zero
+  foreign images, zero 404s, zero console errors.
+- The same UI check against **bali** — 10/10, unchanged after the merge.
+- `tsc --noEmit`, `validate:data`, `verify:coords`, `test:social`, `test:trip`,
+  `test:trips`, `test:e2e` all pass unchanged.
+
+## Known limitations after this pass
+
+1. **Ten destinations still have no photography.** The pipeline supports them;
+   each needs a subject file, and each will need the same gates authored.
+2. **A title is not a photograph.** Everything above is title-and-category
+   verification. No human eye has confirmed a single Phu Quoc image.
+3. **Coverage is thin exactly where the market is.** Five of seven hotels have
+   nothing, because Vietnamese resort photography is not on the open web.
+4. **The `depicts` field is nearly all `general`.** It drives gallery variety, and
+   with no one looking at the images the classifier only had titles to work from.

@@ -463,22 +463,37 @@ export default function ProcessPage() {
             the photo actually depicts.
           </p>
           <p>
-            Source: <strong>Wikimedia Commons</strong>. Free by policy, machine-queryable, and it
-            returns licence and author with every file, so the UI can render a real credit line.
-            Eighty subjects were resolved by <code>scripts/fetch-bali-images.mjs</code>, which scores
-            candidates on subject-token overlap, aspect ratio and resolution, rejects known-bad
-            matches, and commits a reproducible manifest.
+            Sources: <strong>Wikimedia Commons</strong> and <strong>Openverse</strong>. Free by
+            policy, machine-queryable, and both return licence and author with every file, so the UI
+            renders a real credit line. Subjects and their verification rules are data —{' '}
+            <code>scripts/images/subjects/&lt;destination&gt;.mjs</code> — resolved by{' '}
+            <code>scripts/fetch-destination-images.mjs</code>, which scores candidates on
+            subject-token overlap, aspect ratio and resolution, applies a destination-level locality
+            gate and a per-subject name gate, rejects known-bad matches, and commits a reproducible
+            manifest.
           </p>
           <p>
-            Commons has almost no hotel photography for Bali. <strong>Three properties have genuine
-            photos of themselves and the other seventeen borrow their area image</strong>, which the
-            card discloses as “Area photo — not this specific property”. Rejecting bad matches
-            mattered: the first pass picked a bird for a Hilton Garden Inn, a competitor’s resort for
-            a Renaissance, and a fashion shoot for the Ritz-Carlton.
+            <strong>Bali carries 134 photographs across 60 subjects; Phu Quoc carries 54 across 27.</strong>{' '}
+            A property only shows images verified to be that property — by membership of its Commons
+            category, or by its own name plus a locality word in the file title.{' '}
+            <strong>
+              Thirty-four of Bali&rsquo;s thirty-eight hotels and five of Phu Quoc&rsquo;s seven have
+              nothing verifiable
+            </strong>
+            , and their cards say 暂无该酒店实拍照片 rather than showing a beach that is not the hotel.
+          </p>
+          <p>
+            Rejecting bad matches mattered, and a second language made it harder. Vietnamese names
+            contain ordinary words: &ldquo;Bãi Thơm&rdquo; is also a commune office in Thái Bình,
+            &ldquo;Vũng Bầu&rdquo; is also a 1946 government document, and the only Commons file
+            matching Gia Long&rsquo;s temple turned out to be in Đồng Tháp, a thousand kilometres
+            away. Each of those is now a gate in the subject file, not a lucky absence.
           </p>
           <p className="text-muted">
             No image, a failed image and a representative image each have a designed treatment. The
-            test suite forces every image on the page to fail and asserts the page survives.
+            test suite forces every image on the page to fail and asserts the page survives — and no
+            human has looked at the Phu Quoc photographs yet, so their verification is filename and
+            Commons category only.
           </p>
         </Section>
 

@@ -21,154 +21,72 @@
  * Licences are restricted to those that permit commercial use (CC BY, CC BY-SA,
  * CC0, public domain). Share-alike and attribution are recorded per image.
  *
- *   node scripts/fetch-bali-images.mjs             # resolve candidates
- *   node scripts/fetch-bali-images.mjs --download  # fetch, resize, emit manifest
+ *   npm run images:resolve -- --destination phu-quoc   # resolve candidates
+ *   npm run images:download -- --destination phu-quoc  # fetch, resize, emit manifest
  */
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+/**
+ * WHICH DESTINATION
+ * -----------------
+ *   node scripts/fetch-destination-images.mjs --destination phu-quoc
+ *   node scripts/fetch-destination-images.mjs --destination phu-quoc --download
+ *
+ * Defaults to bali, which is the destination the pipeline was built for and the
+ * one whose manifest is already shipped. The subjects and their verification
+ * rules live in scripts/images/subjects/<destination>.mjs; everything in this
+ * file is destination-independent.
+ */
+const destinationIndex = process.argv.indexOf('--destination');
+const DESTINATION = destinationIndex === -1 ? 'bali' : (process.argv[destinationIndex + 1] ?? 'bali');
+if (!/^[a-z0-9-]+$/.test(DESTINATION)) {
+  console.error(`invalid destination: ${DESTINATION}`);
+  process.exit(1);
+}
+const SUBJECTS_PATH = `./images/subjects/${DESTINATION}.mjs`;
+const subjects = await import(pathToFileURL(join(process.cwd(), 'scripts', 'images', 'subjects', `${DESTINATION}.mjs`)).href);
+const {
+  HOTELS,
+  AREAS,
+  PLACES,
+  SUBJECT_RULES,
+  DEPICTS_OVERRIDE,
+  HOTEL_TITLE_REJECT,
+  HOTEL_TITLE_RULES,
+  LOCALITY_HINTS,
+  LOCALITY_HINT,
+  REQUIRE_LOCALITY,
+  STOPWORDS,
+} = subjects;
+
+/** `the-st-regis-bali-resort` -> The St Regis Bali Resort, for log lines only. */
+const DESTINATION_LABEL = DESTINATION.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+/** `phu-quoc` -> PHU_QUOC_IMAGES */
+const MANIFEST_CONST = `${DESTINATION.toUpperCase().replace(/-/g, '_')}_IMAGES`;
 
 const UA = 'MeridianTravelPlanner/1.0 (https://example.invalid; educational demo)';
 const ROOT = process.cwd();
-const IMAGE_DIR = join(ROOT, 'public', 'images', 'bali');
+const IMAGE_DIR = join(ROOT, 'public', 'images', DESTINATION);
 const CACHE_DIR = join(ROOT, 'scripts', '.cache');
-const REVIEW = join(CACHE_DIR, 'bali-image-candidates.json');
+const REVIEW = join(CACHE_DIR, `${DESTINATION}-image-candidates.json`);
+const MANIFEST_CACHE = join(CACHE_DIR, `${DESTINATION}-image-manifest.json`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// --- subjects ---------------------------------------------------------------
-
-const HOTELS = [
-  ['the-st-regis-bali-resort', 'The St. Regis Bali Resort', ['st regis'], ['St. Regis Bali Resort', 'St Regis Bali']],
-  ['the-ritz-carlton-bali', 'The Ritz-Carlton, Bali', ['ritz-carlton', 'ritz carlton'], ['Ritz Carlton Bali', 'Ritz-Carlton Bali']],
-  ['w-bali-seminyak', 'W Bali - Seminyak', ['w retreat', 'w bali', 'w hotel bali'], ['W Retreat and Spa Bali', 'W Bali Seminyak']],
-  ['the-laguna-luxury-collection', 'The Laguna, a Luxury Collection Resort & Spa', ['laguna'], ['Laguna Resort Nusa Dua Bali']],
-  ['the-westin-resort-nusa-dua-bali', 'The Westin Resort Nusa Dua, Bali', ['westin'], ['Westin Resort Nusa Dua Bali']],
-  ['sheraton-bali-kuta-resort', 'Sheraton Bali Kuta Resort', ['sheraton'], ['Sheraton Bali Kuta']],
-  ['renaissance-bali-uluwatu-resort-and-spa', 'Renaissance Bali Uluwatu Resort & Spa', ['renaissance'], ['Renaissance Bali Uluwatu']],
-  ['renaissance-bali-nusa-dua-resort', 'Renaissance Bali Nusa Dua Resort', ['renaissance'], ['Renaissance Bali Nusa Dua']],
-  ['le-meridien-bali-jimbaran', 'Le Méridien Bali Jimbaran', ['meridien', 'méridien'], ['Le Meridien Bali Jimbaran']],
-  ['four-points-by-sheraton-bali-kuta', 'Four Points by Sheraton Bali, Kuta', ['four points'], ['Four Points Sheraton Bali Kuta']],
-  ['four-points-by-sheraton-bali-ungasan', 'Four Points by Sheraton Bali, Ungasan', ['four points'], ['Four Points Sheraton Bali Ungasan']],
-  ['aloft-bali-seminyak', 'Aloft Bali Seminyak', ['aloft'], ['Aloft Bali Seminyak']],
-  ['aloft-bali-kuta-at-beachwalk', 'Aloft Bali Kuta at Beachwalk', ['aloft', 'beachwalk'], ['Aloft Bali Kuta Beachwalk']],
-  ['the-stones-hotel-legian-bali-autograph-collection', 'The Stones Hotel - Legian Bali, Autograph Collection', ['stones'], ['Stones Hotel Legian Bali']],
-  ['conrad-bali', 'Conrad Bali', ['conrad'], ['Conrad Bali']],
-  ['hilton-bali-resort', 'Hilton Bali Resort', ['hilton bali'], ['Hilton Bali Resort Nusa Dua']],
-  ['umana-bali-lxr-hotels-and-resorts', 'Umana Bali, LXR Hotels & Resorts', ['umana'], ['Umana Bali LXR']],
-  ['hilton-garden-inn-bali-nusa-dua', 'Hilton Garden Inn Bali Nusa Dua', ['hilton garden inn'], ['Hilton Garden Inn Bali Nusa Dua']],
-  ['hilton-garden-inn-bali-ngurah-rai-airport', 'Hilton Garden Inn Bali Ngurah Rai Airport', ['hilton garden inn'], ['Hilton Garden Inn Ngurah Rai']],
-  ['courtyard-bali-seminyak', 'Courtyard by Marriott Bali Seminyak Resort', ['courtyard'], ['Courtyard Marriott Bali Seminyak']],
-];
-
-const AREAS = [
-  ['canggu', ['Canggu beach Bali', 'Batu Bolong Beach Canggu', 'Berawa Beach Bali']],
-  ['seminyak', ['Seminyak Beach Bali', 'Petitenget Beach Bali', 'Seminyak Bali street']],
-  ['ubud', ['Ubud Bali rice terrace', 'Ubud Palace Bali', 'Tegallalang rice terrace', 'Ubud Bali market']],
-  ['uluwatu', ['Uluwatu Temple', 'Pura Luhur Uluwatu', 'Uluwatu Bali cliff']],
-  ['nusa-dua', ['Nusa Dua Bali beach', 'Nusa Dua Bali resort', 'Nusa Dua Bali']],
-  ['sanur', ['Sanur Beach Bali', 'Sanur Bali beach', 'Sanur Bali']],
-  ['kuta-legian', ['Kuta Beach Bali', 'Legian Beach Bali', 'Kuta Bali']],
-  ['jimbaran', ['Jimbaran Bay Bali', 'Jimbaran Bali beach', 'Jimbaran Bali']],
-  ['amed', ['Amed Bali', 'Jemeluk Bay Bali', 'Amed Bali beach']],
-  ['kintamani', ['Mount Batur', 'Kintamani Bali', 'Lake Batur Bali']],
-  ['nusa-penida', ['Kelingking Beach Nusa Penida', 'Nusa Penida', 'Diamond Beach Nusa Penida']],
-  ['tampaksiring', ['Tirta Empul', 'Tampaksiring Bali', 'Gunung Kawi']],
-  ['denpasar', ['Denpasar Bali', 'Bajra Sandhi Monument', 'Pasar Badung Bali']],
-  ['tabanan', ['Jatiluwih rice terrace', 'Tabanan Bali', 'Pura Luhur Batukaru']],
-  ['karangasem', ['Tirta Gangga', 'Besakih Temple', 'Karangasem Bali']],
-];
-
-/*
- * Places we deliberately do not search for photography.
- *
- * `sunset-road`, `ubung-bus-terminal`, `beachwalk-kuta-pickup` and
- * `seminyak-village-pickup` are logistical waypoints — a road strip, a bus
- * station and two meeting points. Any photograph we could find for them would be
- * a stand-in for "somewhere in Kuta", which is exactly the kind of borrowed
- * imagery this pipeline exists to prevent. Their cards say "no photo of this
- * place yet", which is true.
- */
-const PLACES = [
-  ['uluwatu-temple', ['Uluwatu Temple Bali', 'Pura Luhur Uluwatu']],
-  ['tanah-lot', ['Tanah Lot', 'Tanah Lot Temple']],
-  ['tegallalang-rice-terrace', ['Tegallalang rice terrace', 'Tegallalang Bali']],
-  ['jatiluwih-rice-terrace', ['Jatiluwih rice terrace', 'Jatiluwih Bali']],
-  ['mount-batur', ['Mount Batur', 'Mount Batur sunrise', 'Batur caldera']],
-  ['tegenungan-waterfall', ['Tegenungan waterfall', 'Tegenungan Bali']],
-  ['campuhan-ridge-walk', ['Campuhan ridge walk', 'Campuhan Ubud']],
-  ['sacred-monkey-forest', ['Ubud Monkey Forest', 'Sacred Monkey Forest Sanctuary']],
-  ['tirta-empul', ['Tirta Empul', 'Tirta Empul temple']],
-  ['besakih-temple', ['Besakih Temple', 'Pura Besakih']],
-  ['kintamani-viewpoint', ['Kintamani Bali', 'Mount Batur caldera', 'Penelokan']],
-  ['mount-agung', ['Mount Agung Bali', 'Gunung Agung Bali']],
-  ['mount-batur-sunrise-trek', ['Mount Batur trekking', 'Toya Bungkah', 'Pura Jati Batur']],
-  ['balinese-cooking-class', ['Balinese cooking class', 'Balinese cuisine Ubud']],
-  ['bebek-bengil', ['Bebek Bengil Ubud', 'Dirty Duck Diner Bali']],
-  ['warung-mak-beng', ['Warung Mak Beng Sanur', 'Sanur Bali food']],
-  ['kelingking-viewpoint', ['Kelingking Beach', 'Kelingking Nusa Penida']],
-  ['kuta-beach', ['Kuta Beach Bali', 'Kuta Bali beach']],
-  ['seminyak-beach', ['Seminyak Beach Bali', 'Seminyak beach']],
-  ['nusa-dua-beach', ['Nusa Dua Beach Bali', 'Nusa Dua beach']],
-  ['pandawa-beach', ['Pandawa Beach Bali', 'Pantai Pandawa']],
-  ['melasti-beach', ['Melasti Beach Bali', 'Pantai Melasti Ungasan']],
-  ['padang-padang-beach', ['Padang Padang Beach', 'Padang Padang Bali']],
-  ['bingin-beach', ['Bingin Beach Bali', 'Bingin Bali']],
-  ['balangan-beach', ['Balangan Beach Bali', 'Balangan Bali']],
-  ['sanur-beach', ['Sanur Beach Bali', 'Sanur Bali beach']],
-  ['jimbaran-beach', ['Jimbaran Bay', 'Jimbaran Bali']],
-  ['jemeluk-beach', ['Amed Bali', 'Jemeluk Bay Bali']],
-  ['ubud-palace', ['Ubud Palace', 'Puri Saren Agung']],
-  ['ubud-art-market', ['Ubud Art Market', 'Ubud market Bali']],
-  ['bali-swing', ['Bali Swing Ubud', 'Ayung river Bali']],
-  ['ayung-river-rafting', ['Ayung River rafting', 'Ayung River Bali']],
-  ['potato-head-beach-club', ['Potato Head Beach Club Bali', 'Seminyak beach club']],
-  ['finns-beach-club', ['Finns Beach Club Bali', 'Berawa Beach Bali']],
-  ['atlas-beach-fest', ['Atlas Beach Fest Bali', 'Berawa Beach Bali']],
-  ['ku-de-ta', ['Ku De Ta Bali', 'Seminyak beach sunset']],
-  ['warung-ibu-oka', ['Babi guling', 'Balinese food']],
-  ['naughty-nuris-ubud', ['Balinese food', 'Ubud restaurant']],
-  ['menega-cafe', ['Jimbaran seafood', 'Jimbaran Bay seafood']],
-  ['single-fin', ['Uluwatu cliff sunset', 'Suluban Beach Bali']],
-  ['old-mans', ['Batu Bolong Beach Canggu', 'Canggu Bali sunset']],
-  ['la-plancha', ['Double Six Beach Bali', 'Seminyak beach sunset']],
-  ['sanur-harbour', ['Sanur harbour Bali', 'Sanur Bali boat']],
-  ['padangbai-harbour', ['Padang Bai Bali', 'Padangbai harbour']],
-];
-
-// --- rules ------------------------------------------------------------------
 
 const BLACKLIST =
   /\b(logo|coat[ _]of[ _]arms|flag|map|diagram|chart|graph|poster|banknote|stamp|sign|signage|screenshot|insect|spider|bird|cormorant|snake|lizard|frog|butterfly|portrait|selfie|modeling|fashion|puppies|puppy|dog|dogs|pipeline|pipelines|lng|turbine|construction|protest|parade|cremation|menu|receipt)\b/i;
 const NON_PHOTO = /\.(svg|png|gif|tif|tiff|webm|ogv|pdf)$/i;
 
-const SUBJECT_RULES = {
-  'sacred-monkey-forest': { allow: /monkey|macaque|macaca/i },
-  'kintamani-viewpoint': { mustMatch: /kintamani|batur|caldera|penelokan/i },
-  'ku-de-ta': { mustMatch: /seminyak|petitenget|ku de ta|kudeta/i },
-  'atlas-beach-fest': { mustMatch: /atlas|berawa|canggu/i },
-  'bingin-beach': { mustMatch: /bingin|pecatu|uluwatu/i },
-  'ubud-art-market': { mustMatch: /market|pasar|ubud/i, reject: /palace|puri/i },
-};
 
-/**
- * Corrections applied after looking at the actual photographs.
- *
- * Title-based classification cannot tell a photograph of a resort's pool deck
- * from a photograph of the lettering above its entrance: both are titled
- * "Conrad Bali". Two of the properties we hold had a dark signage wall sitting
- * in the hero slot because the words "resort & spa" appear in the filename.
- * These are read off the images themselves, once, and recorded here.
+/*
+ * DEPICTS_OVERRIDE now lives in the subject module: it records what a specific
+ * photograph shows, so it belongs next to the list of properties it corrects.
  */
-const DEPICTS_OVERRIDE = {
-  'Conrad bali resort & spa (2940555041).jpg': 'signage',
-  'Conrad Bali (2941410760).jpg': 'room',
-  'Conrad Bali JIWA spa treatment room (2941411134).jpg': 'grounds',
-  'Westin Resort Nusa Dua Bali (4540094068).jpg': 'signage',
-  'W Hotel Bali (6924463930).jpg': 'pool',
-  'W Hotel Bali (6924462698).jpg': 'exterior',
-};
 
 /**
  * What a traveller actually wants to see first. `signage` and `general` sort
@@ -218,7 +136,7 @@ function tokensOf(query) {
   return query
     .toLowerCase()
     .split(/[\s,]+/)
-    .filter((t) => t.length > 2 && !['bali', 'the', 'and', 'beach'].includes(t));
+    .filter((t) => t.length > 2 && !STOPWORDS.includes(t));
 }
 
 // --- sources ----------------------------------------------------------------
@@ -359,9 +277,37 @@ async function openverse(query, attempt = 0) {
 
 // --- scoring ----------------------------------------------------------------
 
+/**
+ * A Commons file title spells "Bãi Khem" as "Bai-Khem" about as often as it
+ * spells it with a space, and "JW Marriott Phu Quoc" as "Jw-marriott-phu-quoc".
+ * Matching a human-written search phrase against the raw title silently dropped
+ * every one of those files — including the JW Marriott's own photograph, which
+ * was sitting in the results the whole time.
+ */
+function normalise(title) {
+  return title.toLowerCase().replace(/[-_]+/g, ' ');
+}
+
 function scoreText(title, query, rules = {}) {
-  const lower = title.toLowerCase();
+  const lower = normalise(title);
   if (NON_PHOTO.test(lower)) return -999;
+  /*
+   * A destination-level locality gate.
+   *
+   * Bali could get away with per-subject rules because its names are
+   * distinctive: "Uluwatu", "Tanah Lot". Vietnamese names are not — "Ông Lăng",
+   * "Vũng Bầu", "Dương Tơ" and "Bãi Thơm" all contain tokens that appear in
+   * ordinary prose and in place names a thousand kilometres away, so a Commons
+   * search for one of them returns 1946 government documents and a coal mine in
+   * Poland. Subjects that export REQUIRE_LOCALITY make every candidate name this
+   * destination as well as the subject; those that do not (Bali) are unchanged.
+   *
+   * A subject whose own name is already unique to the destination can opt out
+   * with `ownName: true` — the monastery "Hộ Quốc Trúc Lâm" is on this island and
+   * nowhere else, and the uploader simply did not repeat the island's name in the
+   * file title. The opt-out is per subject and reviewable, like every other gate.
+   */
+  if (REQUIRE_LOCALITY && !rules.ownName && !REQUIRE_LOCALITY.test(lower)) return -999;
   if (rules.reject && rules.reject.test(lower)) return -999;
   if (rules.mustMatch && !rules.mustMatch.test(lower)) return -999;
   if (BLACKLIST.test(lower) && !(rules.allow && rules.allow.test(lower))) return -80;
@@ -424,52 +370,8 @@ function commonsCandidate(page, query, rules, kind) {
   };
 }
 
-/**
- * A location signal that actually means Bali.
- *
- * "File:Four Points by Sheraton Taipei Bali 01.jpg" is a hotel in New Taipei
- * City, in a district called Bali. A regex that merely looks for the letters
- * "bali" accepted it, and the same trick hides "Blanco Renaissance Museum Ubud
- * Bali" behind the word "renaissance".
- */
-const BALI_HINT =
-  /(nusa dua|seminyak|kuta|ubud|jimbaran|uluwatu|sanur|legian|benoa|ungasan|petitenget|berawa|canggu|tanjung|sawangan|melasti|tanah lot|ngurah rai)/i;
 
-/** Titles that contain a property's name but are a different property or not a hotel. */
-const HOTEL_TITLE_REJECT =
-  /(taipei|new taipei|museum|blanco|nirwana|stepping stones|panoramio|logo|coat[ _]of[ _]arms|airport hotel|bandara)/i;
 
-/**
- * Per-property title rules.
- *
- * A hotel photo may only be used if its own file title names BOTH the property
- * and the right part of Bali. Without this, "Le Meridien Nirwana Bali" (a
- * different resort, in Tabanan) passes for "Le Méridien Bali Jimbaran", and
- * "Hilton Garden Inn" photos pass for "Hilton Bali Resort" — both of which are
- * how a card ends up showing a hotel the traveller is not looking at.
- */
-const HOTEL_TITLE_RULES = {
-  'the-st-regis-bali-resort': { must: /st\.?\s?regis.{0,40}(bali|nusa dua|sawangan)/i },
-  'the-ritz-carlton-bali': { must: /ritz.{0,28}carlton.{0,40}(bali|nusa dua|sawangan)/i },
-  'w-bali-seminyak': { must: /\bw\b.{0,28}(bali|retreat|seminyak|petitenget)/i, reject: /w hotel taipei|washington/i },
-  'the-laguna-luxury-collection': { must: /laguna.{0,40}(nusa dua|bali)/i },
-  'the-westin-resort-nusa-dua-bali': { must: /westin.{0,40}(nusa dua|bali)/i },
-  'sheraton-bali-kuta-resort': { must: /sheraton.{0,40}(bali|kuta)/i },
-  'renaissance-bali-uluwatu-resort-and-spa': { must: /renaissance.{0,40}(bali|uluwatu|ungasan)/i },
-  'renaissance-bali-nusa-dua-resort': { must: /renaissance.{0,40}(bali|nusa dua)/i },
-  'le-meridien-bali-jimbaran': { must: /m[ée]ridien.{0,40}(bali\s?jimbaran|jimbaran)/i },
-  'four-points-by-sheraton-bali-kuta': { must: /four points.{0,44}(bali|kuta)/i },
-  'four-points-by-sheraton-bali-ungasan': { must: /four points.{0,44}(bali|ungasan)/i },
-  'aloft-bali-seminyak': { must: /aloft.{0,40}(bali|seminyak|batu belig)/i },
-  'aloft-bali-kuta-at-beachwalk': { must: /aloft.{0,40}(bali|kuta|beachwalk)/i },
-  'the-stones-hotel-legian-bali-autograph-collection': { must: /stones.{0,28}(hotel|legian|bali)/i, reject: /pond|stepping/i },
-  'conrad-bali': { must: /conrad.{0,40}(bali|benoa|nusa dua)/i },
-  'hilton-bali-resort': { must: /hilton.{0,20}(bali resort|bali|nusa dua)/i, reject: /garden inn/i },
-  'umana-bali-lxr-hotels-and-resorts': { must: /umana.{0,40}(bali|ungasan|uluwatu|lxr)/i },
-  'hilton-garden-inn-bali-nusa-dua': { must: /hilton garden inn.{0,40}(bali|nusa dua)/i },
-  'hilton-garden-inn-bali-ngurah-rai-airport': { must: /hilton garden inn.{0,40}(bali|ngurah rai|airport)/i },
-  'courtyard-bali-seminyak': { must: /courtyard.{0,40}(bali|seminyak)/i },
-};
 
 /** Title rules for a hotel; every hotel must satisfy the global reject list too. */
 function hotelRules(id) {
@@ -484,12 +386,12 @@ function hotelRules(id) {
 
 function openverseCandidate(result, query, rules, kind, mustInclude, areaHints = []) {
   const title = `${result.title ?? ''} ${result.description ?? ''}`.trim();
-  const lower = title.toLowerCase();
+  const lower = normalise(title);
   if (!mustInclude.some((needle) => lower.includes(needle))) return null;
   if (HOTEL_TITLE_REJECT.test(lower)) return null;
   // "St Regis wine" is a real match on the name and nothing to do with the
   // property. Require a location signal too.
-  if (!BALI_HINT.test(lower) && !areaHints.some((h) => lower.includes(h))) return null;
+  if (!LOCALITY_HINT.test(lower) && !areaHints.some((h) => lower.includes(h))) return null;
   let score = scoreText(title, query, rules);
   if (score <= 0) return null;
   const w = result.width ?? 0;
@@ -517,29 +419,6 @@ function openverseCandidate(result, query, rules, kind, mustInclude, areaHints =
 
 // --- resolution -------------------------------------------------------------
 
-/** Locality words that legitimately appear in a property's photo titles. */
-const LOCALITY_HINTS = {
-  'the-st-regis-bali-resort': ['nusa dua', 'benoa', 'sawangan'],
-  'the-ritz-carlton-bali': ['sawangan', 'nusa dua'],
-  'w-bali-seminyak': ['petitenget', 'seminyak', 'kerobokan'],
-  'the-laguna-luxury-collection': ['nusa dua', 'benoa'],
-  'the-westin-resort-nusa-dua-bali': ['nusa dua'],
-  'sheraton-bali-kuta-resort': ['kuta'],
-  'renaissance-bali-uluwatu-resort-and-spa': ['uluwatu', 'ungasan', 'balangan'],
-  'renaissance-bali-nusa-dua-resort': ['nusa dua', 'benoa'],
-  'le-meridien-bali-jimbaran': ['jimbaran'],
-  'four-points-by-sheraton-bali-kuta': ['kuta'],
-  'four-points-by-sheraton-bali-ungasan': ['ungasan', 'uluwatu'],
-  'aloft-bali-seminyak': ['seminyak', 'batu belig'],
-  'aloft-bali-kuta-at-beachwalk': ['kuta', 'beachwalk'],
-  'the-stones-hotel-legian-bali-autograph-collection': ['legian'],
-  'conrad-bali': ['tanjung benoa', 'benoa', 'nusa dua'],
-  'hilton-bali-resort': ['nusa dua', 'sawangan'],
-  'umana-bali-lxr-hotels-and-resorts': ['ungasan', 'melasti', 'uluwatu'],
-  'hilton-garden-inn-bali-nusa-dua': ['nusa dua'],
-  'hilton-garden-inn-bali-ngurah-rai-airport': ['ngurah rai', 'tuban', 'kuta'],
-  'courtyard-bali-seminyak': ['seminyak'],
-};
 
 async function resolveHotel(id, name, mustInclude, queries) {
   const areaHints = LOCALITY_HINTS[id] ?? [];
@@ -561,7 +440,7 @@ async function resolveHotel(id, name, mustInclude, queries) {
   for (const query of queries) {
     const pages2 = await commonsSearch(query, 10);
     for (const page of pages2) {
-      const title = page.title.replace(/^File:/, '').toLowerCase();
+      const title = normalise(page.title.replace(/^File:/, ''));
       if (!mustInclude.some((needle) => title.includes(needle))) continue;
       const candidate = commonsCandidate(page, query, rules, 'hotel');
       if (candidate) pool.push(candidate);
@@ -654,6 +533,7 @@ async function main() {
     mkdirSync(CACHE_DIR, { recursive: true });
     const out = [];
 
+    console.log(`${DESTINATION_LABEL} — subjects from scripts/images/subjects/${DESTINATION}.mjs`);
     console.log('--- hotels (property photography only) ---');
     for (const [index, [id, name, mustInclude, queries]] of HOTELS.entries()) {
       const pool = await resolveHotel(id, name, mustInclude, queries);
@@ -780,7 +660,7 @@ async function main() {
     }
   }
 
-  writeFileSync(join(CACHE_DIR, 'bali-image-manifest.json'), JSON.stringify(manifest, null, 2));
+  writeFileSync(MANIFEST_CACHE, JSON.stringify(manifest, null, 2));
   emitManifest(manifest);
 
   const hotelSubjects = new Set(manifest.filter((e) => e.ownerKind === 'hotel').map((e) => e.ownerId));
@@ -804,7 +684,7 @@ function stripInternal(candidate) {
 function emitManifest(manifest) {
   const lines = [];
   lines.push('/**');
-  lines.push(' * BALI PHOTOGRAPHY — generated by scripts/fetch-bali-images.mjs.');
+  lines.push(` * ${DESTINATION.toUpperCase()} PHOTOGRAPHY — generated by scripts/fetch-destination-images.mjs.`);
   lines.push(' *');
   lines.push(' * Sources: Wikimedia Commons (places, areas, a few properties) and Openverse');
   lines.push(' * (Flickr and other CC repositories, which is where hotel interior photography');
@@ -822,12 +702,13 @@ function emitManifest(manifest) {
   lines.push(' * `depicts` records what a photo shows — pool, room, beach, dining, exterior — and');
   lines.push(' * drives gallery variety so two images of one hotel are not two of the same thing.');
   lines.push(' *');
-  lines.push(' * Regenerate: npm run images:resolve && npm run images:download');
+  lines.push(` * Subjects and their verification rules: scripts/images/subjects/${DESTINATION}.mjs`);
+  lines.push(` * Regenerate: npm run images:resolve -- --destination ${DESTINATION} && npm run images:download -- --destination ${DESTINATION}`);
   lines.push(' */');
   lines.push('');
   lines.push("import type { PlaceImage } from '../../types';");
   lines.push('');
-  lines.push('export const BALI_IMAGES: Record<string, PlaceImage[]> = {');
+  lines.push(`export const ${MANIFEST_CONST}: Record<string, PlaceImage[]> = {`);
 
   const grouped = new Map();
   for (const entry of manifest) {
@@ -841,7 +722,7 @@ function emitManifest(manifest) {
     for (const entry of entries) {
       lines.push('    {');
       lines.push(`      id: '${entry.id}',`);
-      lines.push(`      url: '/images/bali/${entry.file}',`);
+      lines.push(`      url: '/images/${DESTINATION}/${entry.file}',`);
       lines.push(`      alt: ${JSON.stringify(entry.alt)},`);
       lines.push(`      role: '${entry.role}',`);
       lines.push("      subject: 'subject',");
@@ -859,8 +740,9 @@ function emitManifest(manifest) {
   lines.push('};');
   lines.push('');
   mkdirSync(join(ROOT, 'lib', 'data', 'images'), { recursive: true });
-  writeFileSync(join(ROOT, 'lib', 'data', 'images', 'bali-images.ts'), lines.join('\n'));
-  console.log('emitted → lib/data/images/bali-images.ts');
+  const target = join(ROOT, 'lib', 'data', 'images', `${DESTINATION}-images.ts`);
+  writeFileSync(target, lines.join('\n'));
+  console.log(`emitted → lib/data/images/${DESTINATION}-images.ts`);
 }
 
 main();
